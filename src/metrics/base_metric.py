@@ -1,5 +1,8 @@
 from abc import abstractmethod
 
+from torch import Tensor
+from torchmetrics.audio.pit import PermutationInvariantTraining
+
 
 class BaseMetric:
     """
@@ -20,3 +23,48 @@ class BaseMetric:
         Can use external functions (like TorchMetrics) or custom ones.
         """
         raise NotImplementedError()
+
+
+class PermutationInvariantMetric(BaseMetric):
+    def __init__(self, metric_func, eval_func: str = "max", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.metric = PermutationInvariantTraining(
+            metric_func=metric_func, eval_func=eval_func
+        )
+
+    def __call__(self, predicted: Tensor, target: Tensor, **batch):
+        """
+        Args:
+            predicted (Tensor): (batch, n_speakers, time)
+            target (Tensor): (batch, n_speakers, time)
+
+        Returns:
+            dict with:
+                metric (Tensor)
+        """
+        return self.metric(predicted, target)
+
+
+class ImprovementPermutationInvariantMetric(PermutationInvariantMetric):
+    """
+    Computes improvement of a model prediction over the mixture input:
+
+    Improvement = PITMetric(pred, target) - PITMetric(mix, target)
+    """
+
+    def __call__(self, predicted: Tensor, target: Tensor, mix: Tensor, **batch):
+        """
+        Args:
+            predicted (Tensor): (batch, n_speakers, time)
+            target (Tensor): (batch, n_speakers, time)
+            mix (Tensor): (batch, time)
+
+        Returns:
+            dict with:
+                metric (Tensor)
+        """
+        pred_metric = self.metric(predicted, target)
+        mix_metric = self.metric(mix.unsqueeze(1).expand_as(target), target)
+
+        return pred_metric - mix_metric
