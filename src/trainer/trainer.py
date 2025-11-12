@@ -99,16 +99,16 @@ class Trainer(BaseTrainer):
     def log_audio(self, mix_audio, predicted_audios, target_audio=None, aug_mix_audio=None, name=""):
         if target_audio is not None:
             for i, target_audio in enumerate(target_audio):
-                self.writer.add_audio(f"{name}_target_audio_{i}", target_audio, sample_rate=self.sample_rate)
+                self.writer.add_audio(f"{name}_target_audio_{i}", target_audio.detach().cpu(), sample_rate=self.sample_rate)
 
         if aug_mix_audio is not None:
             for i, target_audio in enumerate(target_audio):
-                self.writer.add_audio(f"{name}_aug_mix_audio_{i}", aug_mix_audio, sample_rate=self.sample_rate)
+                self.writer.add_audio(f"{name}_aug_mix_audio_{i}", aug_mix_audio.detach().cpu(), sample_rate=self.sample_rate)
 
         for i, predicted_audio in enumerate(predicted_audios):
-            self.writer.add_audio(f"{name}_predicted_audio_{i}", predicted_audio, sample_rate=self.sample_rate)
+            self.writer.add_audio(f"{name}_predicted_audio_{i}", predicted_audio.detach().cpu(), sample_rate=self.sample_rate)
 
-        self.writer.add_audio(f"{name}_mix_audio", mix_audio, sample_rate=self.sample_rate)
+        self.writer.add_audio(f"{name}_mix_audio", mix_audio.detach().cpu(), sample_rate=self.sample_rate)
 
     def log_predictions(
         self, metric_funcs, examples_to_log=2, **batch
