@@ -4,6 +4,8 @@ from string import ascii_lowercase
 import torch
 import torchaudio
 
+import math
+
 class AudioEncoder:
     def __init__(self, n_fft=400, win_length=None, hop_length=None, window_fn=torch.hann_window, input_transform=None):
         """
@@ -18,8 +20,7 @@ class AudioEncoder:
         self.input_transform = input_transform
 
     def encode_input(self, audio: torch.Tensor) -> torch.Tensor:
-        if self.input_transform is not None:
-            audio = self.input_transform(audio)
+        audio = self.input_transform(audio)
         return audio
 
     def encode(self, audio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -33,3 +34,13 @@ class AudioEncoder:
     def decode(self, magnit: torch.Tensor, phase: torch.Tensor, length: int) -> torch.Tensor:
         spectrogram = magnit * torch.exp(1j * phase)
         return self.inverse_spectrogram(spectrogram, length=length)
+
+    def get_input_shape(self, signal_length: int, sample_rate: int) -> tuple[int, int]:
+        sample = torch.randn(1, sample_rate, signal_length)
+        res = self.input_transform(sample)
+        return res.shape[1], res.shape[2]
+
+    def get_output_shape(self, signal_length: int) -> tuple[int, int]:
+        n_fft = self.spectrogram.n_fft
+        hop_length = self.spectrogram.hop_length
+        return n_fft // 2 + 1, math.ceil((signal_length - n_fft) / hop_length) + 1
