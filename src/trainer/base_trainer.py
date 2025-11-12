@@ -80,9 +80,12 @@ class BaseTrainer:
         self.batch_transforms = batch_transforms
 
         self.use_amp = config.trainer.get("amp", False)
-        if self.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
-        
+        self.use_amp_bf16 = config.trainer.get("amp_bf16", False)
+        self.scaler = torch.cuda.amp.GradScaler(device=self.device, enabled=(self.use_amp or self.use_amp_bf16))
+        self.amp_dtype = (
+            torch.bfloat16 if self.use_amp_bf16 else torch.float16
+        )
+
         self.use_ema = config.trainer.get("ema", False)
         if self.use_ema:
             self.ema_coef = config.trainer.get("ema_coef", 0.9999)
@@ -247,15 +250,11 @@ class BaseTrainer:
                         raise e
 
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
-                    if self.use_amp:
-                        self.scaler.unscale_(self.optimizer)
+                    self.scaler.unscale_(self.optimizer)
                     self._clip_grad_norm()
                     self.train_metrics.update("grad_norm", self._get_grad_norm())
-                    if self.use_amp:
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        self.optimizer.step()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                     self.optimizer.zero_grad()
                     self.lr_scheduler.step()
                     

@@ -39,7 +39,7 @@ class Trainer(BaseTrainer):
         if self.is_train:
             metric_funcs = self.metrics["train"]
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
             outputs = self.model(**batch)
             batch.update(outputs)
 
@@ -50,11 +50,8 @@ class Trainer(BaseTrainer):
 
         if self.is_train:
             loss = batch["loss"] / self.gradient_accumulation_steps
-            if self.use_amp:
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward() # sum of all losses is always called loss
- 
+            self.scaler.scale(loss).backward()
+
         # update metrics for each loss (in case of multiple losses)
         if not self.is_train or self._last_local_step % self._n_steps_update_metrics == 0:
             for loss_name in self.config.writer.loss_names:

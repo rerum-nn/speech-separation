@@ -40,6 +40,7 @@ trainer:
   save_dir: "saved"
   seed: 1
   # use_amp: True
+  # use_amp_bf16: True
   # use_ema: True
   # ema_coef: 0.9999
   # gradient_accumulation_steps: 1
