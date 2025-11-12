@@ -1,12 +1,10 @@
 train:
   _target_: src.datasets.AVSSDataset
-  audio_dir: /home/boboxa/junk/speech-separation/data/datasets/dla_dataset/audio/val
+  audio_dir: /home/boboxa/junk/speech-separation/data/datasets/dla_dataset/audio/train
   mouths_dir: /home/boboxa/junk/speech-separation/data/datasets/dla_dataset/mouths
-  limit : 2
   instance_transforms: ${transforms.instance_transforms.train}
 val:
   _target_: src.datasets.src.datasets.AVSSDataset
   audio_dir: /home/boboxa/junk/speech-separation/data/datasets/dla_dataset/audio/val
   mouths_dir: /home/boboxa/junk/speech-separation/data/datasets/dla_dataset/mouths
-  limit : 2
   instance_transforms: ${transforms.instance_transforms.inference}
