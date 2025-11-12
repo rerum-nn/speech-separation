@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pandas as pd
 
+import torch
 from src.logger.utils import plot_spectrogram
 from src.metrics.tracker import MetricTracker
-from src.metrics.utils import calc_cer, calc_wer
 from src.trainer.base_trainer import BaseTrainer
 
 
@@ -38,27 +38,39 @@ class Trainer(BaseTrainer):
         metric_funcs = self.metrics["inference"]
         if self.is_train:
             metric_funcs = self.metrics["train"]
-            self.optimizer.zero_grad()
 
-        outputs = self.model(**batch)
-        batch.update(outputs)
+        with torch.cuda.amp.autocast(enabled=self.use_amp):
+            outputs = self.model(**batch)
+            batch.update(outputs)
 
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
+            batch = self._get_predicted(batch)
+
+            all_losses = self.criterion(**batch)
+            batch.update(all_losses)
 
         if self.is_train:
-            batch["loss"].backward()  # sum of all losses is always called loss
-            self._clip_grad_norm()
-            self.optimizer.step()
-            if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
-
+            loss = batch["loss"] / self.gradient_accumulation_steps
+            if self.use_amp:
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward() # sum of all losses is always called loss
+ 
         # update metrics for each loss (in case of multiple losses)
-        for loss_name in self.config.writer.loss_names:
-            metrics.update(loss_name, batch[loss_name].item())
+        if not self.is_train or self._last_local_step % self._n_steps_update_metrics == 0:
+            for loss_name in self.config.writer.loss_names:
+                metrics.update(loss_name, batch[loss_name].item())
 
-        for met in metric_funcs:
-            metrics.update(met.name, met(**batch))
+            for met in metric_funcs:
+                metrics.update(met.name, met(**batch))
+
+        return batch
+
+    def _get_predicted(self, batch):
+        batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1']
+        batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2']
+        batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'])
+        batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'])
+        batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):
@@ -73,51 +85,58 @@ class Trainer(BaseTrainer):
             mode (str): train or inference. Defines which logging
                 rules to apply.
         """
-        # method to log data from you batch
-        # such as audio, text or images, for example
+        metric_funcs = self.metrics["inference"]
+        if self.is_train:
+            metric_funcs = self.metrics["train"]
 
-        # logging scheme might be different for different partitions
-        if mode == "train":  # the method is called only every self.log_step steps
-            self.log_spectrogram(**batch)
-        else:
-            # Log Stuff
-            self.log_spectrogram(**batch)
-            self.log_predictions(**batch)
+        self.log_predictions(metric_funcs, **batch)
 
-    def log_spectrogram(self, spectrogram, **batch):
+    def log_spectrogram(self, spectrogram, name):
         spectrogram_for_plot = spectrogram[0].detach().cpu()
         image = plot_spectrogram(spectrogram_for_plot)
-        self.writer.add_image("spectrogram", image)
+        self.writer.add_image(name, image)
+
+    def log_audio(self, mix_audio, predicted_audios, target_audio=None, aug_mix_audio=None, name=""):
+        if target_audio is not None:
+            for i, target_audio in enumerate(target_audio):
+                self.writer.add_audio(f"{name}_target_audio_{i}", target_audio, sample_rate=self.sample_rate)
+
+        if aug_mix_audio is not None:
+            for i, target_audio in enumerate(target_audio):
+                self.writer.add_audio(f"{name}_aug_mix_audio_{i}", aug_mix_audio, sample_rate=self.sample_rate)
+
+        for i, predicted_audio in enumerate(predicted_audios):
+            self.writer.add_audio(f"{name}_predicted_audio_{i}", predicted_audio, sample_rate=self.sample_rate)
+
+        self.writer.add_audio(f"{name}_mix_audio", mix_audio, sample_rate=self.sample_rate)
 
     def log_predictions(
-        self, text, log_probs, log_probs_length, audio_path, examples_to_log=10, **batch
+        self, metric_funcs, examples_to_log=2, **batch
     ):
-        # TODO add beam search
-        # Note: by improving text encoder and metrics design
-        # this logging can also be improved significantly
-
-        argmax_inds = log_probs.cpu().argmax(-1).numpy()
-        argmax_inds = [
-            inds[: int(ind_len)]
-            for inds, ind_len in zip(argmax_inds, log_probs_length.numpy())
-        ]
-        argmax_texts_raw = [self.text_encoder.decode(inds) for inds in argmax_inds]
-        argmax_texts = [self.text_encoder.ctc_decode(inds) for inds in argmax_inds]
-        tuples = list(zip(argmax_texts, text, argmax_texts_raw, audio_path))
-
         rows = {}
-        for pred, target, raw_pred, audio_path in tuples[:examples_to_log]:
-            target = self.text_encoder.normalize_text(target)
-            wer = calc_wer(target, pred) * 100
-            cer = calc_cer(target, pred) * 100
+        for i in range(examples_to_log):
+            name = Path(batch['mix_path'][i]).name.split('.')[0]
 
-            rows[Path(audio_path).name] = {
-                "target": target,
-                "raw prediction": raw_pred,
-                "predictions": pred,
-                "wer": wer,
-                "cer": cer,
+            self.log_spectrogram(batch['input_mix_spectrogram'][i], f"{name}_input_mix")
+            self.log_spectrogram(batch['original_mix_spectrogram'][i], f"{name}_original_mix")
+            self.log_spectrogram(batch['mix_spectrogram'][i], f"{name}_mix")
+        
+            self.log_spectrogram(batch['mask1'][i], f"{name}_mask1")
+            self.log_spectrogram(batch['mask2'][i], f"{name}_mask2")
+            self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
+            self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
+
+            self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
+
+            row = {
+                'step': self.writer.step
             }
+
+            for met in metric_funcs:
+                row[met.name] = met(batch['predicted'][i:i+1], batch['target'][i:i+1], batch['original_mix'][i:i+1])
+
+            rows[name] = row
+
         self.writer.add_table(
-            "predictions", pd.DataFrame.from_dict(rows, orient="index")
+            "metrics", pd.DataFrame.from_dict(rows, orient="index")
         )

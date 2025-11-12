@@ -33,15 +33,16 @@ def main(config):
     else:
         device = config.trainer.device
 
-    # setup text_encoder
-    text_encoder = instantiate(config.text_encoder)
+    audio_encoder = instantiate(config.audio_encoder)
+
+    sample_rate = config.trainer.sample_rate
 
     # setup data_loader instances
     # batch_transforms should be put on device
-    dataloaders, batch_transforms = get_dataloaders(config, text_encoder, device)
+    dataloaders, batch_transforms = get_dataloaders(config, audio_encoder, device)
 
     # build model architecture, then print to console
-    model = instantiate(config.model, n_tokens=len(text_encoder)).to(device)
+    model = instantiate(config.model).to(device)
     logger.info(model)
 
     # get function handles of loss and metrics
@@ -52,7 +53,7 @@ def main(config):
         for metric_config in config.metrics.get(metric_type, []):
             # use text_encoder in metrics
             metrics[metric_type].append(
-                instantiate(metric_config, text_encoder=text_encoder)
+                instantiate(metric_config)
             )
 
     # build optimizer, learning rate scheduler
@@ -70,7 +71,8 @@ def main(config):
         metrics=metrics,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        text_encoder=text_encoder,
+        audio_encoder=audio_encoder,
+        sample_rate=sample_rate,
         config=config,
         device=device,
         dataloaders=dataloaders,

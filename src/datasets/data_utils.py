@@ -43,13 +43,14 @@ def move_batch_transforms_to_device(batch_transforms, device):
                 transforms[transform_name] = transforms[transform_name].to(device)
 
 
-def get_dataloaders(config, device):
+def get_dataloaders(config, audio_encoder, device):
     """
     Create dataloaders for each of the dataset partitions.
     Also creates instance and batch transforms.
 
     Args:
         config (DictConfig): hydra experiment config.
+        audio_encoder (AudioEncoder): audio encoder for the model.
         device (str): device to use for batch transforms.
     Returns:
         dataloaders (dict[DataLoader]): dict containing dataloader for a
@@ -67,7 +68,9 @@ def get_dataloaders(config, device):
     for dataset_partition in config.datasets.keys():
         # dataset partition init
         dataset = instantiate(
-            config.datasets[dataset_partition]
+            config.datasets[dataset_partition],
+            audio_encoder=audio_encoder,
+            target_sr=config.trainer.sample_rate,
         )  # instance transforms are defined inside
 
         assert config.dataloader.batch_size <= len(dataset), (

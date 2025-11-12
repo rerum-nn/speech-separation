@@ -30,6 +30,15 @@ def collate_fn(dataset_items: list[dict]):
     batch = {
         "mix_path": collate_list(dataset_items, "mix_path"),
         "mix": collate_tensor(dataset_items, "mix"),
+        "original_mix": collate_tensor(dataset_items, "original_mix"),
+        "mix_len": dataset_items[0]["mix_len"],
+
+        "mix_spectrogram": collate_tensor(dataset_items, "mix_spectrogram"),
+        "mix_phase": collate_tensor(dataset_items, "mix_phase"),
+        "input_mix_spectrogram": collate_tensor(dataset_items, "input_mix_spectrogram"),
+        "original_mix_spectrogram": collate_tensor(dataset_items, "original_mix_spectrogram"),
+
+        "has_transforms": dataset_items[0]["has_transforms"],
     }
 
     if "source1" in dataset_items[0]:
