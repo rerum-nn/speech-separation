@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import torch
 
 from src.logger.utils import plot_spectrogram
 from src.metrics.tracker import MetricTracker
@@ -40,16 +41,32 @@ class Trainer(BaseTrainer):
             metric_funcs = self.metrics["train"]
             self.optimizer.zero_grad()
 
-        outputs = self.model(**batch)
-        batch.update(outputs)
+        amp_dtype = (
+            torch.bfloat16 if self.config.trainer.amp_use_bf16 else torch.float16
+        )
 
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
+        with torch.autocast(
+            device_type=self.config.trainer.device_type,
+            dtype=amp_dtype,
+            enabled=self.config.trainer.amp_enabled,
+        ):
+            outputs = self.model(**batch)
+            batch.update(outputs)
+
+            all_losses = self.criterion(**batch)
+            batch.update(all_losses)
 
         if self.is_train:
-            batch["loss"].backward()  # sum of all losses is always called loss
+            self.scaler.scale(
+                batch["loss"]
+            ).backward()  # sum of all losses is always called loss
+
+            self.scaler.unscale_(self.optimizer)
             self._clip_grad_norm()
-            self.optimizer.step()
+
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 

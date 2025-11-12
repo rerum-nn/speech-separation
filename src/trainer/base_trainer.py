@@ -31,6 +31,8 @@ class BaseTrainer:
         epoch_len=None,
         skip_oom=True,
         batch_transforms=None,
+        use_amp=False,
+        use_amp_bf16=False,
     ):
         """
         Args:
@@ -56,6 +58,8 @@ class BaseTrainer:
             batch_transforms (dict[Callable] | None): transforms that
                 should be applied on the whole batch. Depend on the
                 tensor name.
+            use_amp (bool): enables automatic mixed presicion training
+            use_amp_bf16 (bool): enables amp training in bf16
         """
         self.is_train = True
 
@@ -74,6 +78,8 @@ class BaseTrainer:
         self.lr_scheduler = lr_scheduler
         self.text_encoder = text_encoder
         self.batch_transforms = batch_transforms
+
+        self.scaler = torch.cuda.amp.GradScaler(self.device, enabled=use_amp)
 
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
