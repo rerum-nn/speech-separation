@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import torch
 
 import torch
 from src.logger.utils import plot_spectrogram

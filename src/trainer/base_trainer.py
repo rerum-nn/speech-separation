@@ -32,6 +32,8 @@ class BaseTrainer:
         epoch_len=None,
         skip_oom=False,
         batch_transforms=None,
+        use_amp=False,
+        use_amp_bf16=False,
     ):
         """
         Args:
@@ -58,6 +60,8 @@ class BaseTrainer:
             batch_transforms (dict[Callable] | None): transforms that
                 should be applied on the whole batch. Depend on the
                 tensor name.
+            use_amp (bool): enables automatic mixed presicion training
+            use_amp_bf16 (bool): enables amp training in bf16
         """
         self.is_train = True
 
