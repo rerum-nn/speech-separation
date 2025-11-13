@@ -20,10 +20,11 @@ class Inferencer(BaseTrainer):
         config,
         device,
         dataloaders,
-        text_encoder,
         save_path,
         metrics=None,
         batch_transforms=None,
+        audio_encoder=None,
+        sample_rate=16000,
         skip_model_load=False,
     ):
         """
@@ -60,9 +61,7 @@ class Inferencer(BaseTrainer):
 
         self.model = model
         self.batch_transforms = batch_transforms
-
-        self.text_encoder = text_encoder
-
+        self.audio_encoder = audio_encoder
         # define dataloaders
         self.evaluation_dataloaders = {k: v for k, v in dataloaders.items()}
 

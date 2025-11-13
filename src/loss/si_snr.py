@@ -15,7 +15,7 @@ class SI_SNR(nn.Module):
             mode="speaker-wise",
         )
 
-    def forward(self, predicted: Tensor, target: Tensor) -> Dict[str, Tensor]:
+    def forward(self, predicted: Tensor, target: Tensor, **batch) -> Dict[str, Tensor]:
         """
         Args:
             predicted (Tensor): (batch, n_speakers, time)
@@ -25,4 +25,4 @@ class SI_SNR(nn.Module):
             dict with:
                 loss (Tensor)
         """
-        return {"loss": self.loss(predicted, target)}
+        return {"loss": -self.loss(predicted, target)}

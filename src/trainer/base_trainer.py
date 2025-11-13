@@ -22,14 +22,15 @@ class BaseTrainer:
         metrics,
         optimizer,
         lr_scheduler,
-        text_encoder,
+        audio_encoder,
+        sample_rate,
         config,
         device,
         dataloaders,
         logger,
         writer,
         epoch_len=None,
-        skip_oom=True,
+        skip_oom=False,
         batch_transforms=None,
         use_amp=False,
         use_amp_bf16=False,
@@ -44,7 +45,8 @@ class BaseTrainer:
             optimizer (Optimizer): optimizer for the model.
             lr_scheduler (LRScheduler): learning rate scheduler for the
                 optimizer.
-            text_encoder (CTCTextEncoder): text encoder.
+            audio_encoder (AudioEncoder): audio encoder for the model.
+            sample_rate (int): sample rate for the audio.
             config (DictConfig): experiment config containing training config.
             device (str): device for tensors and model.
             dataloaders (dict[DataLoader]): dataloaders for different
@@ -66,6 +68,9 @@ class BaseTrainer:
         self.config = config
         self.cfg_trainer = self.config.trainer
 
+        self.audio_encoder = audio_encoder
+        self.sample_rate = sample_rate
+        
         self.device = device
         self.skip_oom = skip_oom
 
@@ -76,10 +81,23 @@ class BaseTrainer:
         self.criterion = criterion
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
-        self.text_encoder = text_encoder
         self.batch_transforms = batch_transforms
 
-        self.scaler = torch.cuda.amp.GradScaler(self.device, enabled=use_amp)
+        self.use_amp = config.trainer.get("amp", False)
+        self.use_amp_bf16 = config.trainer.get("amp_bf16", False)
+        self.scaler = torch.cuda.amp.GradScaler(enabled=(self.use_amp or self.use_amp_bf16))
+        self.amp_dtype = (
+            torch.bfloat16 if self.use_amp_bf16 else torch.float16
+        )
+
+        self.use_ema = config.trainer.get("ema", False)
+        if self.use_ema:
+            self.ema_coef = config.trainer.get("ema_coef", 0.9999)
+            self.model = torch.optim.swa_utils.AveragedModel(self.model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_coef), device=self.device)
+
+        self.gradient_accumulation_steps = self.cfg_trainer.get(
+            "gradient_accumulation_steps", 1
+        )
 
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
@@ -97,8 +115,11 @@ class BaseTrainer:
 
         # define epochs
         self._last_epoch = 0  # required for saving on interruption
+        self._last_local_step = 0
         self.start_epoch = 1
         self.epochs = self.cfg_trainer.n_epochs
+
+        self._n_steps_update_metrics = self.cfg_trainer.get("n_steps_update_metrics", self.log_step)
 
         # configuration to monitor model performance and save best
 
@@ -123,6 +144,8 @@ class BaseTrainer:
 
         # setup visualization writer instance
         self.writer = writer
+
+        self.save_on_keyboard_interrupt = self.cfg_trainer.get("save_on_keyboard_interrupt", True)
 
         # define metrics
         self.metrics = metrics
@@ -158,8 +181,9 @@ class BaseTrainer:
         try:
             self._train_process()
         except KeyboardInterrupt as e:
-            self.logger.info("Saving model on keyboard interrupt")
-            self._save_checkpoint(self._last_epoch, save_best=False)
+            if self.save_on_keyboard_interrupt:
+                self.logger.info("Saving model on keyboard interrupt")
+                self._save_checkpoint(self._last_epoch, suffix=f"_{self._last_local_step}", save_best=False)
             raise e
 
     def _train_process(self):
@@ -190,10 +214,12 @@ class BaseTrainer:
             )
 
             if epoch % self.save_period == 0 or best:
-                self._save_checkpoint(epoch, save_best=best, only_best=True)
+                self._save_checkpoint(epoch, save_best=best)
 
             if stop_process:  # early_stop
                 break
+
+            self._last_local_step = 0
 
     def _train_epoch(self, epoch):
         """
@@ -209,45 +235,57 @@ class BaseTrainer:
         self.is_train = True
         self.model.train()
         self.train_metrics.reset()
-        self.writer.set_step((epoch - 1) * self.epoch_len)
+        self.writer.set_step((epoch - 1) * self.epoch_len + self._last_local_step)
         self.writer.add_scalar("epoch", epoch)
-        for batch_idx, batch in enumerate(
-            tqdm(self.train_dataloader, desc="train", total=self.epoch_len)
-        ):
-            try:
-                batch = self.process_batch(
-                    batch,
-                    metrics=self.train_metrics,
-                )
-            except torch.cuda.OutOfMemoryError as e:
-                if self.skip_oom:
-                    self.logger.warning("OOM on batch. Skipping batch.")
-                    torch.cuda.empty_cache()  # free some memory
-                    continue
-                else:
-                    raise e
-
-            self.train_metrics.update("grad_norm", self._get_grad_norm())
-
-            # log current results
-            if batch_idx % self.log_step == 0:
-                self.writer.set_step((epoch - 1) * self.epoch_len + batch_idx)
-                self.logger.debug(
-                    "Train Epoch: {} {} Loss: {:.6f}".format(
-                        epoch, self._progress(batch_idx), batch["loss"].item()
+        with tqdm(desc="train", total=self.epoch_len, initial=self._last_local_step) as pbar:
+            for batch_idx, batch in enumerate(self.train_dataloader):
+                try:
+                    self.optimizer.zero_grad()
+                    batch = self.process_batch(
+                        batch,
+                        metrics=self.train_metrics,
                     )
-                )
-                self.writer.add_scalar(
-                    "learning rate", self.lr_scheduler.get_last_lr()[0]
-                )
-                self._log_scalars(self.train_metrics)
-                self._log_batch(batch_idx, batch)
-                # we don't want to reset train metrics at the start of every epoch
-                # because we are interested in recent train metrics
-                last_train_metrics = self.train_metrics.result()
-                self.train_metrics.reset()
-            if batch_idx + 1 >= self.epoch_len:
-                break
+                except torch.cuda.OutOfMemoryError as e:
+                    if self.skip_oom:
+                        self.logger.warning("OOM on batch. Skipping batch.")
+                        torch.cuda.empty_cache()  # free some memory
+                        continue
+                    else:
+                        raise e
+
+                if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    self.scaler.unscale_(self.optimizer)
+                    self._clip_grad_norm()
+                    self.train_metrics.update("grad_norm", self._get_grad_norm())
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                    self.lr_scheduler.step()
+                    
+                    # log current results
+                    if self._last_local_step % self.log_step == 0:
+                        self.writer.set_step((epoch - 1) * self.epoch_len + self._last_local_step)
+                        self.logger.debug(
+                            "Train Epoch: {} {} Loss: {:.6f}".format(
+                                epoch, self._progress(self._last_local_step), batch["loss"].item()
+                            )
+                        )
+                        self.writer.add_scalar(
+                            "learning rate", self.lr_scheduler.get_last_lr()[0]
+                        )
+                        self._log_scalars(self.train_metrics)
+                        self._log_batch(self._last_local_step, batch)
+                        # we don't want to reset train metrics at the start of every epoch
+                        # because we are interested in recent train metrics
+                        last_train_metrics = self.train_metrics.result()
+                        self.train_metrics.reset()
+                        pbar.set_postfix(**last_train_metrics)
+
+                    self._last_local_step += 1
+                    pbar.update(1)
+
+                    if self._last_local_step >= self.epoch_len:
+                        break  
 
         logs = last_train_metrics
 
@@ -460,7 +498,7 @@ class BaseTrainer:
         for metric_name in metric_tracker.keys():
             self.writer.add_scalar(f"{metric_name}", metric_tracker.avg(metric_name))
 
-    def _save_checkpoint(self, epoch, save_best=False, only_best=False):
+    def _save_checkpoint(self, epoch, suffix="", save_best=False, only_best=False):
         """
         Save the checkpoints.
 
@@ -480,8 +518,9 @@ class BaseTrainer:
             "lr_scheduler": self.lr_scheduler.state_dict(),
             "monitor_best": self.mnt_best,
             "config": self.config,
+            "last_batch_idx": self._last_local_step,
         }
-        filename = str(self.checkpoint_dir / f"checkpoint-epoch{epoch}.pth")
+        filename = str(self.checkpoint_dir / f"checkpoint-epoch{epoch}{suffix}.pth")
         if not (only_best and save_best):
             torch.save(state, filename)
             if self.config.writer.log_checkpoints:
@@ -510,6 +549,7 @@ class BaseTrainer:
         self.logger.info(f"Loading checkpoint: {resume_path} ...")
         checkpoint = torch.load(resume_path, self.device)
         self.start_epoch = checkpoint["epoch"] + 1
+        self._last_local_step = checkpoint["last_batch_idx"]
         self.mnt_best = checkpoint["monitor_best"]
 
         # load architecture params from checkpoint.
@@ -535,7 +575,7 @@ class BaseTrainer:
             self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
         self.logger.info(
-            f"Checkpoint loaded. Resume training from epoch {self.start_epoch}"
+            f"Checkpoint loaded. Resume training from epoch {self.start_epoch} and batch {self._last_local_step}"
         )
 
     def _from_pretrained(self, pretrained_path):

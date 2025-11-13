@@ -21,6 +21,7 @@ class BaseDataset(Dataset):
     def __init__(
         self,
         index,
+        audio_encoder,
         target_sr=16000,
         limit=None,
         shuffle_index=False,
@@ -31,6 +32,7 @@ class BaseDataset(Dataset):
             index (list[dict]): list, containing dict for each element of
                 the dataset. The dict has required metadata information,
                 such as label and object path.
+            audio_encoder (AudioEncoder): audio encoder for the model.
             target_sr (int): supported sample rate.
             limit (int | None): if not None, limit the total number of elements
                 in the dataset to 'limit' elements.
@@ -50,6 +52,7 @@ class BaseDataset(Dataset):
 
         self.target_sr = target_sr
         self.instance_transforms = instance_transforms
+        self.audio_encoder = audio_encoder
 
     def __getitem__(self, ind):
         """
@@ -79,6 +82,7 @@ class BaseDataset(Dataset):
             "original_mix": mix.clone()
             if self.instance_transforms is not None
             else mix,
+            "has_transforms": self.instance_transforms is not None and 'mix' in self.instance_transforms,
         }
 
         if "source1_path" in data_dict:
@@ -105,16 +109,17 @@ class BaseDataset(Dataset):
 
         instance_data = self.preprocess_data(instance_data)
 
-        if (
-            self.instance_transforms is not None
-            and "get_spectrogram" in self.instance_transforms
-        ):
-            mix_spectrogram = self.get_spectrogram(instance_data["mix"])
-            instance_data["mix_spectrogram"] = mix_spectrogram
-            original_mix_spectrogram = self.get_spectrogram(
-                instance_data["original_mix"]
-            )
-            instance_data["original_mix_spectrogram"] = original_mix_spectrogram
+        mix_spectrogram, mix_phase = self.audio_encoder.encode(instance_data["mix"])
+        instance_data["mix_spectrogram"] = mix_spectrogram
+        instance_data["mix_phase"] = mix_phase
+        
+        original_mix_spectrogram = self.audio_encoder.get_spectrogram(
+            instance_data["original_mix"]
+        )
+        instance_data["original_mix_spectrogram"] = original_mix_spectrogram
+
+        input_mix_spectrogram = self.audio_encoder.encode_input(instance_data["mix"])
+        instance_data["input_mix_spectrogram"] = input_mix_spectrogram
 
         return instance_data
 
@@ -136,22 +141,6 @@ class BaseDataset(Dataset):
     def load_video(self, video):
         return torch.from_numpy(np.load(video)["data"])
 
-    def get_spectrogram(self, audio):
-        """
-        Special instance transform with a special key to
-        get spectrogram from audio.
-
-        Args:
-            audio (Tensor): original audio.
-        Returns:
-            spectrogram (Tensor): spectrogram for the audio.
-        """
-        assert (
-            self.instance_transforms is not None
-            and "get_spectrogram" in self.instance_transforms
-        )
-        return self.instance_transforms["get_spectrogram"](audio)
-
     def preprocess_data(self, instance_data):
         """
         Preprocess data with instance transforms.
@@ -168,8 +157,6 @@ class BaseDataset(Dataset):
         """
         if self.instance_transforms is not None:
             for transform_name in self.instance_transforms.keys():
-                if transform_name == "get_spectrogram":
-                    continue  # skip special key
                 instance_data[transform_name] = self.instance_transforms[
                     transform_name
                 ](instance_data[transform_name])

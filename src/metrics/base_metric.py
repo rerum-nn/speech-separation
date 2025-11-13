@@ -26,12 +26,12 @@ class BaseMetric:
 
 
 class PermutationInvariantMetric(BaseMetric):
-    def __init__(self, metric_func, eval_func: str = "max", *args, **kwargs):
+    def __init__(self, metric_func, eval_func: str = "max", device: str = "cpu", *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.metric = PermutationInvariantTraining(
             metric_func=metric_func, eval_func=eval_func
-        )
+        ).to(device)
 
     def __call__(self, predicted: Tensor, target: Tensor, **batch):
         """
@@ -56,7 +56,7 @@ class ImprovementPermutationInvariantMetric(PermutationInvariantMetric):
     def __call__(self, predicted: Tensor, target: Tensor, mix: Tensor, **batch):
         """
         Args:
-            predicted (Tensor): (batch, n_speakers, time)
+            predicted (Tensor): (batch, n_speakers, time)  
             target (Tensor): (batch, n_speakers, time)
             mix (Tensor): (batch, time)
 
@@ -65,6 +65,6 @@ class ImprovementPermutationInvariantMetric(PermutationInvariantMetric):
                 metric (Tensor)
         """
         pred_metric = self.metric(predicted, target)
-        mix_metric = self.metric(mix.unsqueeze(1).expand_as(target), target)
+        mix_metric = self.metric(mix.expand_as(target), target)
 
         return pred_metric - mix_metric
