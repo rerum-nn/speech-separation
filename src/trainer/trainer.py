@@ -130,10 +130,10 @@ class Trainer(BaseTrainer):
             }
 
             for met in metric_funcs:
-                row[met.name] = met(predicted=batch['predicted'][i:i+1], target=batch['target'][i:i+1], mix=batch['mix'][i:i+1]).detach().cpu()
+                row[met.name] = met(predicted=batch['predicted'][i:i+1], target=batch['target'][i:i+1], mix=batch['mix'][i:i+1]).detach().cpu().item()
 
             rows[name] = row
-
-        self.writer.add_table(
-            "metrics", pd.DataFrame.from_dict(rows, orient="index")
-        )
+        if len(metric_funcs) > 0:
+            self.writer.add_table(
+                "metrics", pd.DataFrame.from_dict(rows, orient="index")
+            )
