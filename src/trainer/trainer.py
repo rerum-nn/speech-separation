@@ -63,10 +63,10 @@ class Trainer(BaseTrainer):
         return batch
 
     def _get_predicted(self, batch):
-        batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1']
-        batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2']
-        batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'])
-        batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'])
+        batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1'].unsqueeze(1)
+        batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2'].unsqueeze(1)
+        batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
+        batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
         batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
         return batch
 
@@ -118,8 +118,8 @@ class Trainer(BaseTrainer):
             self.log_spectrogram(batch['original_mix_spectrogram'][i], f"{name}_original_mix")
             self.log_spectrogram(batch['mix_spectrogram'][i], f"{name}_mix")
         
-            self.log_spectrogram(batch['mask1'][i], f"{name}_mask1")
-            self.log_spectrogram(batch['mask2'][i], f"{name}_mask2")
+            self.log_spectrogram(batch['mask1'][i].unsqueeze(0), f"{name}_mask1")
+            self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
             self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
             self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
 
@@ -130,7 +130,7 @@ class Trainer(BaseTrainer):
             }
 
             for met in metric_funcs:
-                row[met.name] = met(batch['predicted'][i:i+1], batch['target'][i:i+1], batch['original_mix'][i:i+1])
+                row[met.name] = met(predicted=batch['predicted'][i:i+1], target=batch['target'][i:i+1], mix=batch['mix'][i:i+1]).detach().cpu()
 
             rows[name] = row
 

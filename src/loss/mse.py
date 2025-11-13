@@ -13,7 +13,7 @@ class MSE(nn.Module):
             metric_func=F.mse_loss, eval_func="min", mode="speaker-wise"
         )
 
-    def forward(self, predicted: Tensor, target: Tensor) -> Dict[str, Tensor]:
+    def forward(self, predicted: Tensor, target: Tensor, **batch) -> Dict[str, Tensor]:
         """
         Args:
             predicted (Tensor): (batch, n_speakers, ...)

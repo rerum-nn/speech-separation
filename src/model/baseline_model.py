@@ -18,6 +18,11 @@ class BaselineModel(nn.Module):
         """
         super().__init__()
 
+        self.in_freq = in_freq
+        self.in_frames = in_frames
+        self.out_freq = out_freq
+        self.out_frames = out_frames
+
         self.net = Sequential(
             # people say it can approximate any function...
             nn.Linear(in_features=in_freq * in_frames, out_features=fc_hidden),
@@ -29,19 +34,19 @@ class BaselineModel(nn.Module):
         self.head1 = nn.Linear(in_features=fc_hidden, out_features=out_freq * out_frames)
         self.head2 = nn.Linear(in_features=fc_hidden, out_features=out_freq * out_frames)
 
-    def forward(self, spectrogram, **batch):
+    def forward(self, input_mix_spectrogram, **batch):
         """
         Model forward method.
 
         Args:
-            spectrogram (Tensor): input spectrogram.
+            input_mix_spectrogram (Tensor): input mix spectrogram.
         Returns:
             output (dict): output dict containing mask1 and mask2.
         """
-        output = self.net(spectrogram.view(spectrogram.size(0), -1))
+        output = self.net(input_mix_spectrogram.view(input_mix_spectrogram.size(0), -1))
         
-        mask1 = self.head1(output)
-        mask2 = self.head2(output)
+        mask1 = nn.functional.relu(self.head1(output).view(output.size(0), self.out_freq, self.out_frames))
+        mask2 = nn.functional.relu(self.head2(output).view(output.size(0), self.out_freq, self.out_frames))
 
         return {"mask1": mask1, "mask2": mask2}
 

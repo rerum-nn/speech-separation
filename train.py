@@ -42,7 +42,7 @@ def main(config):
     dataloaders, batch_transforms = get_dataloaders(config, audio_encoder, device)
 
     signal_length = dataloaders["train"].dataset[0]["mix"].shape[1]
-    in_freq, in_frames = audio_encoder.get_input_shape(int(signal_length), sample_rate)
+    in_freq, in_frames = audio_encoder.get_input_shape(signal_length)
     out_freq, out_frames = audio_encoder.get_output_shape(signal_length)
 
     # build model architecture, then print to console
@@ -57,7 +57,7 @@ def main(config):
         for metric_config in config.metrics.get(metric_type, []):
             # use text_encoder in metrics
             metrics[metric_type].append(
-                instantiate(metric_config)
+                instantiate(metric_config, device=device)
             )
 
     # build optimizer, learning rate scheduler

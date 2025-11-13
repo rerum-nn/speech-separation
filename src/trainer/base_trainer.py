@@ -81,7 +81,7 @@ class BaseTrainer:
 
         self.use_amp = config.trainer.get("amp", False)
         self.use_amp_bf16 = config.trainer.get("amp_bf16", False)
-        self.scaler = torch.cuda.amp.GradScaler(device=self.device, enabled=(self.use_amp or self.use_amp_bf16))
+        self.scaler = torch.cuda.amp.GradScaler(enabled=(self.use_amp or self.use_amp_bf16))
         self.amp_dtype = (
             torch.bfloat16 if self.use_amp_bf16 else torch.float16
         )

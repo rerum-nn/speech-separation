@@ -32,6 +32,7 @@ def collate_fn(dataset_items: list[dict]):
         "mix": collate_tensor(dataset_items, "mix"),
         "original_mix": collate_tensor(dataset_items, "original_mix"),
         "mix_len": dataset_items[0]["mix_len"],
+        "mix_waveform_len": dataset_items[0]["mix"].shape[1],
 
         "mix_spectrogram": collate_tensor(dataset_items, "mix_spectrogram"),
         "mix_phase": collate_tensor(dataset_items, "mix_phase"),
