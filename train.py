@@ -41,8 +41,8 @@ def main(config):
     # batch_transforms should be put on device
     dataloaders, batch_transforms = get_dataloaders(config, audio_encoder, device)
 
-    signal_length = dataloaders["train"].dataset[0]["mix_len"]
-    in_freq, in_frames = audio_encoder.get_input_shape(signal_length, sample_rate)
+    signal_length = dataloaders["train"].dataset[0]["mix"].shape[1]
+    in_freq, in_frames = audio_encoder.get_input_shape(int(signal_length), sample_rate)
     out_freq, out_frames = audio_encoder.get_output_shape(signal_length)
 
     # build model architecture, then print to console
