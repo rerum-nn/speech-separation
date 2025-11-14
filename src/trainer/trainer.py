@@ -41,11 +41,9 @@ class Trainer(BaseTrainer):
             metric_funcs = self.metrics["train"]
 
         if self.modality == "audiovideo":
-            print(batch['source1_mouth'].shape, batch['source2_mouth'].shape)
             video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
             video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
             batch['video_features'] = torch.cat([video_features1, video_features2], dim=1)
-            print(batch['video_features'].shape)
 
         with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
             outputs = self.model(**batch)
