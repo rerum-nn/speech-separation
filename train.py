@@ -36,7 +36,8 @@ def main(config):
 
     audio_encoder = instantiate(config.audio_encoder)
     video_encoder = None
-    if config.video_encoder is not None:
+
+    if "video_encoder" in config:
         video_encoder = instantiate(config.video_encoder.model).to(device)
         video_encoder = load_video_encoder_weights(video_encoder, config.video_encoder.weights)
 
