@@ -55,8 +55,10 @@ def collate_fn(dataset_items: list[dict]):
 
     if "source1_mouth" in dataset_items[0]:
         batch["source1_mouth"] = collate_tensor(dataset_items, "source1_mouth")
+        batch["source1_mouth"] = batch["source1_mouth"].float() / 255.0
 
     if "source2_mouth" in dataset_items[0]:
         batch["source2_mouth"] = collate_tensor(dataset_items, "source2_mouth")
-
+        batch["source2_mouth"] = batch["source2_mouth"].float() / 255.0
+        
     return batch

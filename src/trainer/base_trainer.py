@@ -23,6 +23,7 @@ class BaseTrainer:
         optimizer,
         lr_scheduler,
         audio_encoder,
+        video_encoder,
         sample_rate,
         config,
         device,
@@ -46,6 +47,7 @@ class BaseTrainer:
             lr_scheduler (LRScheduler): learning rate scheduler for the
                 optimizer.
             audio_encoder (AudioEncoder): audio encoder for the model.
+            video_encoder (VideoEncoder): video encoder for the model.
             sample_rate (int): sample rate for the audio.
             config (DictConfig): experiment config containing training config.
             device (str): device for tensors and model.
@@ -69,8 +71,14 @@ class BaseTrainer:
         self.cfg_trainer = self.config.trainer
 
         self.audio_encoder = audio_encoder
+        self.video_encoder = video_encoder
         self.sample_rate = sample_rate
-        
+
+        self.modality = config.trainer.get("modality", "audio")
+        if self.modality not in ["audio", "audiovideo"]:
+            raise ValueError(f"Invalid modality: {self.modality}")
+
+
         self.device = device
         self.skip_oom = skip_oom
 

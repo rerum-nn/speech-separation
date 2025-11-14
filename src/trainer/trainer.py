@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 
 import torch
-from src.logger.utils import plot_spectrogram
+from src.logger.utils import plot_spectrogram, plot_images
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 
@@ -39,6 +39,13 @@ class Trainer(BaseTrainer):
         metric_funcs = self.metrics["inference"]
         if self.is_train:
             metric_funcs = self.metrics["train"]
+
+        if self.modality == "audiovideo":
+            print(batch['source1_mouth'].shape, batch['source2_mouth'].shape)
+            video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
+            video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
+            batch['video_features'] = torch.cat([video_features1, video_features2], dim=1)
+            print(batch['video_features'].shape)
 
         with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
             outputs = self.model(**batch)
@@ -108,6 +115,11 @@ class Trainer(BaseTrainer):
 
         self.writer.add_audio(f"{name}_mix_audio", mix_audio.detach().cpu(), sample_rate=self.sample_rate)
 
+    def log_images(self, images, subplots_names, name):
+        images = images.detach().cpu()
+        image = plot_images(images, subplots_names)
+        self.writer.add_image(name, image)
+
     def log_predictions(
         self, metric_funcs, examples_to_log=2, **batch
     ):
@@ -126,6 +138,12 @@ class Trainer(BaseTrainer):
 
             self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
 
+            if self.modality == "audiovideo":
+                mouth1 = batch['source1_mouth'][i][0].unsqueeze(0)
+                mouth2 = batch['source2_mouth'][i][0].unsqueeze(0)
+                mouths = torch.cat([mouth1.unsqueeze(0), mouth2.unsqueeze(0)], dim=0)
+                self.log_images(mouths, ["source1_mouth", "source2_mouth"], f"{name}_mouths")
+
             row = {
                 'step': self.writer.step
             }
@@ -134,6 +152,7 @@ class Trainer(BaseTrainer):
                 row[met.name] = met(predicted=batch['predicted'][i:i+1], target=batch['target'][i:i+1], mix=batch['mix'][i:i+1]).detach().cpu().item()
 
             rows[name] = row
+
         if len(metric_funcs) > 0:
             self.writer.add_table(
                 "metrics", pd.DataFrame.from_dict(rows, orient="index")

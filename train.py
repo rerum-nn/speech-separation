@@ -2,12 +2,13 @@ import warnings
 
 import hydra
 import torch
+import torch
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
 from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
-from src.utils.init_utils import set_random_seed, setup_saving_and_logging
+from src.utils.init_utils import set_random_seed, setup_saving_and_logging, load_video_encoder_weights
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -34,6 +35,10 @@ def main(config):
         device = config.trainer.device
 
     audio_encoder = instantiate(config.audio_encoder)
+    video_encoder = None
+    if config.video_encoder is not None:
+        video_encoder = instantiate(config.video_encoder.model).to(device)
+        video_encoder = load_video_encoder_weights(video_encoder, config.video_encoder.weights)
 
     sample_rate = config.trainer.sample_rate
 
@@ -76,6 +81,7 @@ def main(config):
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         audio_encoder=audio_encoder,
+        video_encoder=video_encoder,
         sample_rate=sample_rate,
         config=config,
         device=device,
