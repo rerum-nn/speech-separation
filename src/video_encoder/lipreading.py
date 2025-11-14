@@ -109,7 +109,7 @@ class Lipreading(nn.Module):
         self.frontend3D = nn.Sequential(
                     nn.Conv3d(1, self.frontend_nout, kernel_size=(5, 7, 7), stride=(1, 2, 2), padding=(2, 3, 3), bias=False),
                     nn.BatchNorm3d(self.frontend_nout),
-                    nn.ReLU(True),
+                    nn.SiLU(True),
                     nn.MaxPool3d( kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)))
 
     def forward(self, x):
