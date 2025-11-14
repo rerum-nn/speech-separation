@@ -9,7 +9,7 @@ from src.model.unet_layers.encoder import Encoder
 class UNet(nn.Module):
     def __init__(self, num_classes=2, num_filters=64, num_blocks=4, *args, **kwargs):
         super().__init__()
-        self.encoder = Encoder(num_blocks)
+        self.encoder = Encoder(num_blocks, num_filters=num_filters)
 
         self.decoder = Decoder(num_filters=num_filters, num_blocks=num_blocks - 1)
 
