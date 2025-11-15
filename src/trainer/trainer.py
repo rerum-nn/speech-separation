@@ -127,10 +127,11 @@ class Trainer(BaseTrainer):
             self.log_spectrogram(batch['original_mix_spectrogram'][i], f"{name}_original_mix")
             self.log_spectrogram(batch['mix_spectrogram'][i], f"{name}_mix")
         
-            self.log_spectrogram(batch['mask1'][i].unsqueeze(0), f"{name}_mask1")
-            self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
-            self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
-            self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
+            if 'mask1' in batch and 'mask2' in batch:
+                self.log_spectrogram(batch['mask1'][i].unsqueeze(0), f"{name}_mask1")
+                self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
+                self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
+                self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
 
             self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
 
