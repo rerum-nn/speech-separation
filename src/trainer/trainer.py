@@ -64,11 +64,19 @@ class Trainer(BaseTrainer):
         return batch
 
     def _get_predicted(self, batch):
-        batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1'].unsqueeze(1)
-        batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2'].unsqueeze(1)
-        batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
-        batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
-        batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+        if 'mask1' in batch and 'mask2' in batch:
+            batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1'].unsqueeze(1)
+            batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2'].unsqueeze(1)
+            batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
+            batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
+            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+        elif 'signal1' in batch and 'signal2' in batch:
+            batch['predicted_source1'] = batch['signal1']
+            batch['predicted_source2'] = batch['signal2']
+            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+        else:
+            raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
+            
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):
