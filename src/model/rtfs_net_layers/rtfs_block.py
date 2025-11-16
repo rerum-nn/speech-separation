@@ -230,6 +230,8 @@ class RTFSBlock(nn.Module):
             attention_stride=1):
         super().__init__()
 
+        self.compression_blocks = compression_blocks
+
         self.compression_phase = CompressionPhase(in_dim, hidden_dim, compression_blocks, kernel_size=compression_kernel_size, stride=compression_stride)
         self.freq_dim = freq_dim
         for i in range(compression_blocks):
@@ -257,12 +259,17 @@ class RTFSBlock(nn.Module):
             new_A.append(self.attention_reconstruction(Ai, x))
 
         upsampled_A = []
-        for i in range(1, len(new_A)):
-            A1 = new_A[i - 1]
-            A2 = new_A[i]
-            reconstructed_A = self.attention_reconstruction(A1, A2)
-            upsampled_A.append(reconstructed_A + A[i - 1])
-        x = self.upsampling(upsampled_A[0]) + x_residual
+        for i in range(self.compression_blocks - 1):
+            for i in range(1, len(new_A)):
+                A1 = new_A[i - 1]
+                A2 = new_A[i]
+                reconstructed_A = self.attention_reconstruction(A1, A2)
+                upsampled_A.append(reconstructed_A + A[i - 1])
+            new_A = upsampled_A
+            upsampled_A = []
+
+        assert len(new_A) == 1
+        x = self.upsampling(new_A[0]) + x_residual
 
         return x
         
