@@ -213,20 +213,34 @@ class AttentionReconstruction(nn.Module):
         return x1 * x2 + x3
 
 class RTFSBlock(nn.Module):
-    def __init__(self, in_channels, hid_channels, freq_dim, rnn_layers=1, rnn_channels=32, compression_blocks=2, n_heads=4):
+    def __init__(
+            self, 
+            in_dim, 
+            hidden_dim, 
+            freq_dim, 
+            rnn_layers=1, 
+            rnn_hidden_dim=32, 
+            dual_path_kernel_size=8,
+            dual_path_stride=1,
+            compression_blocks=2, 
+            n_heads=4, 
+            compression_kernel_size=4,
+            compression_stride=2,
+            attention_kernel_size=8,
+            attention_stride=1):
         super().__init__()
 
-        self.compression_phase = CompressionPhase(in_channels, hid_channels, compression_blocks)
+        self.compression_phase = CompressionPhase(in_dim, hidden_dim, compression_blocks, kernel_size=compression_kernel_size, stride=compression_stride)
         self.freq_dim = freq_dim
         for i in range(compression_blocks):
             self.freq_dim = (self.freq_dim - 4) // 2 + 1
 
-        self.dual_path_rnn = DualPathRNN(hid_channels, self.freq_dim, rnn_layers, rnn_channels)
-        self.tf_self_attention = TFSelfAttention(hid_channels, hidden_dim=self.freq_dim * 4, freq_dim=self.freq_dim, n_heads=n_heads)
+        self.dual_path_rnn = DualPathRNN(hidden_dim, self.freq_dim, rnn_layers=rnn_layers, hidden_dim=rnn_hidden_dim, kernel_size=dual_path_kernel_size, stride=dual_path_stride)
+        self.tf_self_attention = TFSelfAttention(hidden_dim, freq_dim=self.freq_dim, hidden_dim=self.freq_dim * 4, n_heads=n_heads)
 
-        self.attention_reconstruction = AttentionReconstruction(hid_channels, self.freq_dim)
+        self.attention_reconstruction = AttentionReconstruction(hidden_dim, self.freq_dim)
 
-        self.upsampling = nn.Conv2d(hid_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.upsampling = nn.Conv2d(hidden_dim, in_dim, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         x_residual = x
