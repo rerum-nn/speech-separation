@@ -6,19 +6,24 @@ import math
 
 
 class CompressionPhase(nn.Module):
-    def __init__(self, in_channels, hid_channels, compression_blocks, kernel_size=4, stride=2):
+    def __init__(self, in_channels, hid_channels, compression_blocks, kernel_size=4, stride=2, is_2d=True):
         super().__init__()
 
         assert hid_channels < in_channels, "hid_channels must be less than in_channels"
+        
+        self.is_2d = is_2d
 
-        self.downstream = nn.Conv2d(in_channels, hid_channels, kernel_size=1, stride=1, padding=0)
+        Conv = nn.Conv2d if is_2d else nn.Conv1d
+        BatchNorm = nn.BatchNorm2d if is_2d else nn.BatchNorm1d
+
+        self.downstream = Conv(in_channels, hid_channels, kernel_size=1, stride=1, padding=0)
         self.compression_phase = nn.ModuleList()
 
         for _ in range(compression_blocks):
             self.compression_phase.append(
                 nn.Sequential(
-                    nn.Conv2d(hid_channels, hid_channels, kernel_size=kernel_size, stride=stride, padding=0, groups=hid_channels),
-                    nn.BatchNorm2d(hid_channels),
+                    Conv(hid_channels, hid_channels, kernel_size=kernel_size, stride=stride, padding=0, groups=hid_channels),
+                    BatchNorm(hid_channels),
                     nn.ReLU(inplace=True)
                 )
             )
@@ -36,7 +41,8 @@ class CompressionPhase(nn.Module):
 
         target_size = A[-1].shape[2:]
         for i in range(len(A)):
-            A_resized.append(F.adaptive_avg_pool2d(A[i], target_size))
+            avg_pool = F.adaptive_avg_pool2d if self.is_2d else F.adaptive_avg_pool1d
+            A_resized.append(avg_pool(A[i], target_size))
 
         A_G = torch.stack(A_resized, dim=0).sum(dim=0)
 
@@ -189,19 +195,23 @@ class TFSelfAttention(nn.Module):
         return x
 
 class AttentionReconstruction(nn.Module):
-    def __init__(self, channel_dim, freq_dim):
+    def __init__(self, channel_dim, is_2d=True):
         super().__init__()
 
+        self.is_2d = is_2d
+
+        Conv = nn.Conv2d if is_2d else nn.Conv1d
+
         self.w1 = nn.Sequential(
-            nn.Conv2d(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
         )
         self.w2 = nn.Sequential(
-            nn.Conv2d(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
         )
         self.w3 = nn.Sequential(
-            nn.Conv2d(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
         )
 
@@ -240,7 +250,7 @@ class RTFSBlock(nn.Module):
         self.dual_path_rnn = DualPathRNN(hidden_dim, self.freq_dim, rnn_layers=rnn_layers, hidden_dim=rnn_hidden_dim, kernel_size=dual_path_kernel_size, stride=dual_path_stride)
         self.tf_self_attention = TFSelfAttention(hidden_dim, freq_dim=self.freq_dim, hidden_dim=self.freq_dim * 4, n_heads=n_heads)
 
-        self.attention_reconstruction = AttentionReconstruction(hidden_dim, self.freq_dim)
+        self.attention_reconstruction = AttentionReconstruction(hidden_dim)
 
         self.upsampling = nn.Conv2d(hidden_dim, in_dim, kernel_size=1, stride=1, padding=0)
 
@@ -258,15 +268,14 @@ class RTFSBlock(nn.Module):
         for Ai in A:
             new_A.append(self.attention_reconstruction(Ai, x))
 
-        upsampled_A = []
-        for i in range(self.compression_blocks - 1):
+        for _ in range(self.compression_blocks - 1):
+            next_level = []
             for i in range(1, len(new_A)):
                 A1 = new_A[i - 1]
                 A2 = new_A[i]
                 reconstructed_A = self.attention_reconstruction(A1, A2)
-                upsampled_A.append(reconstructed_A + A[i - 1])
-            new_A = upsampled_A
-            upsampled_A = []
+                next_level.append(reconstructed_A + A[i - 1])
+            new_A = next_level
 
         assert len(new_A) == 1
         x = self.upsampling(new_A[0]) + x_residual
