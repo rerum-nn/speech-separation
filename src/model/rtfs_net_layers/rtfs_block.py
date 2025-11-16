@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from src.model.rtfs_net_layers.utils import Permute
 import torch.nn.functional as F
 import math
 
@@ -100,20 +101,91 @@ class DualPathRNN(nn.Module):
         return x[..., :old_T, :old_F]
 
 class TFSelfAttention(nn.Module):
-    def __init__(self, channel_dim, freq_dim, num_heads=4):
+    def __init__(self, channel_dim, freq_dim, hidden_dim, n_heads=4):
         super().__init__()
 
-        self.mhsa = nn.MultiheadAttention(channel_dim * freq_dim, num_heads=num_heads, batch_first=True)
-        self.post = nn.Conv2d(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0)
+        assert channel_dim % n_heads == 0
+        assert hidden_dim % freq_dim == 0
+
+        self.n_heads = n_heads
+        self.channel_dim = channel_dim
+        self.hidden_dim = hidden_dim
+
+        qk_embedding_dim = hidden_dim // freq_dim
+
+        self.Q_conv = nn.ModuleList()
+        self.K_conv = nn.ModuleList()
+        self.V_conv = nn.ModuleList()
+        for i in range(n_heads):
+            self.Q_conv.append(
+                nn.Sequential(
+                    nn.Conv2d(channel_dim, qk_embedding_dim, kernel_size=1),
+                    nn.PReLU(),
+                    Permute(dims=(0, 2, 1, 3)),
+                    nn.LayerNorm([qk_embedding_dim, freq_dim]),
+                    Permute(dims=(0, 2, 1, 3))
+                )
+            )
+            self.K_conv.append(
+                nn.Sequential(
+                    nn.Conv2d(channel_dim, qk_embedding_dim, kernel_size=1),
+                    nn.PReLU(),
+                    Permute(dims=(0, 2, 1, 3)),
+                    nn.LayerNorm([qk_embedding_dim, freq_dim]),
+                    Permute(dims=(0, 2, 1, 3))
+                )
+            )
+            self.V_conv.append(
+                nn.Sequential(
+                    nn.Conv2d(channel_dim, channel_dim // n_heads, kernel_size=1),
+                    nn.PReLU(),
+                    Permute(dims=(0, 2, 1, 3)),
+                    nn.LayerNorm([channel_dim // n_heads, freq_dim]),
+                    Permute(dims=(0, 2, 1, 3))
+                )
+            )
+        
+        self.attn_concat_proj = nn.Sequential(
+            nn.Conv2d(channel_dim, channel_dim, kernel_size=1),
+            nn.PReLU(),
+            Permute(dims=(0, 2, 1, 3)),
+            nn.LayerNorm([channel_dim, freq_dim]),
+            Permute(dims=(0, 2, 1, 3))
+        )
 
     def forward(self, x):
         B, C, T, F = x.shape
-        x = x.permute(0, 2, 1, 3)
-        x = x.reshape(B, T, C * F)
-        x, _ = self.mhsa(x, x, x, need_weights=False)
-        x = x.view(B, T, C, F)
-        x = x.permute(0, 2, 1, 3).contiguous()
-        x = self.post(x)
+
+        Q, K, V = [], [], []
+        for i in range(self.n_heads):
+            Q.append(self.Q_conv[i](x))
+            K.append(self.K_conv[i](x))
+            V.append(self.V_conv[i](x))
+
+        Q = torch.cat(Q, dim=0)
+        K = torch.cat(K, dim=0)
+        V = torch.cat(V, dim=0)
+
+        Q = Q.permute(0, 2, 1, 3)
+        Q = Q.reshape(Q.shape[0], Q.shape[1], -1)
+        K = K.permute(0, 2, 1, 3)
+        K = K.reshape(K.shape[0], K.shape[1], -1)
+        V = V.permute(0, 2, 1, 3)
+        old_shape = V.shape
+        V = V.reshape(V.shape[0], V.shape[1], -1)
+
+        attention = (Q @ K.transpose(-2, -1)) / (self.hidden_dim ** 0.5)
+        attention = nn.functional.softmax(attention, dim=2)
+        A = attention @ V
+
+        A = A.view(old_shape)
+        A = A.permute(0, 2, 1, 3).contiguous()
+
+        x = A.view(self.n_heads, B, self.channel_dim // self.n_heads, T, F)
+        x = x.transpose(0, 1)
+        x = x.contiguous().view(B, self.channel_dim, T, F)
+        x = self.attn_concat_proj(x)
+
         return x
 
 class AttentionReconstruction(nn.Module):
@@ -141,7 +213,7 @@ class AttentionReconstruction(nn.Module):
         return x1 * x2 + x3
 
 class RTFSBlock(nn.Module):
-    def __init__(self, in_channels, hid_channels, freq_dim, rnn_layers=1, rnn_channels=32, compression_blocks=2, num_heads=4):
+    def __init__(self, in_channels, hid_channels, freq_dim, rnn_layers=1, rnn_channels=32, compression_blocks=2, n_heads=4):
         super().__init__()
 
         self.compression_phase = CompressionPhase(in_channels, hid_channels, compression_blocks)
@@ -150,7 +222,7 @@ class RTFSBlock(nn.Module):
             self.freq_dim = (self.freq_dim - 4) // 2 + 1
 
         self.dual_path_rnn = DualPathRNN(hid_channels, self.freq_dim, rnn_layers, rnn_channels)
-        self.tf_self_attention = TFSelfAttention(hid_channels, self.freq_dim)
+        self.tf_self_attention = TFSelfAttention(hid_channels, hidden_dim=self.freq_dim * 4, freq_dim=self.freq_dim, n_heads=n_heads)
 
         self.attention_reconstruction = AttentionReconstruction(hid_channels, self.freq_dim)
 
@@ -176,10 +248,7 @@ class RTFSBlock(nn.Module):
             A2 = new_A[i]
             reconstructed_A = self.attention_reconstruction(A1, A2)
             upsampled_A.append(reconstructed_A + A[i - 1])
-        print("upsampled length: ", len(upsampled_A))
         x = self.upsampling(upsampled_A[0]) + x_residual
 
         return x
-        
-
         
