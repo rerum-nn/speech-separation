@@ -52,8 +52,8 @@ class UNet(nn.Module):
         if pad_w:
             x = x[:, :, :, :-pad_w]
 
-        mask1 = x[:, 0, :, :]
-        mask2 = x[:, 1, :, :]
+        mask1 = nn.functional.relu(x[:, 0, :, :])
+        mask2 = nn.functional.relu(x[:, 1, :, :])
 
         return {"mask1": mask1, "mask2": mask2}
 
