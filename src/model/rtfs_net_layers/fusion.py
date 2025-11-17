@@ -8,18 +8,18 @@ from src.model.rtfs_net_layers.global_layer_norm import (
 
 
 class GatedFusion(nn.Module):
-    def __init__(self, C_v: int, C_a: int, *args, **kwargs):
+    def __init__(self, C_v: int, C_a: int, use_bn2d: bool = False, *args, **kwargs):
         super().__init__()
 
         self.C_v = C_v
         self.C_a = C_a
 
+        Norm2d = nn.BatchNorm2d if use_bn2d else GlobalLayerNorm2D
+
         self.p2 = nn.Sequential(
-            nn.Conv2d(C_a, C_a, kernel_size=1, groups=C_a),
-            GlobalLayerNorm2D(
-                C_a
-            ),  # TODO maybe rms_norm or batchnorm2d instead, maybe drop bias?
-            nn.ReLU(),  # TODO maybe inplace
+            nn.Conv2d(C_a, C_a, kernel_size=1, groups=C_a, bias=not use_bn2d),
+            Norm2d(C_a),
+            nn.ReLU(inplace=True),
         )
 
         self.f2 = nn.Sequential(
@@ -49,20 +49,29 @@ class GatedFusion(nn.Module):
 
 
 class AttentionFusion(nn.Module):
-    def __init__(self, C_v: int, C_a: int, h: int, *args, **kwargs):
+    def __init__(
+        self,
+        C_v: int,
+        C_a: int,
+        num_heads: int = 4,
+        use_bn2d: bool = False,
+        *args,
+        **kwargs
+    ):
         super().__init__()
 
-        self.h = h
+        self.num_heads = num_heads
+
+        Norm2d = nn.BatchNorm2d if use_bn2d else GlobalLayerNorm2D
+
         self.p1 = nn.Sequential(
-            nn.Conv2d(C_a, C_a, kernel_size=1, groups=C_a),
-            GlobalLayerNorm2D(
-                C_a
-            ),  # TODO maybe rms_norm or batchnorm2d instead, maybe drop bias?
+            nn.Conv2d(C_a, C_a, kernel_size=1, groups=C_a, bias=not use_bn2d),
+            Norm2d(C_a),
         )
 
         self.f1 = nn.Sequential(
-            nn.Conv1d(C_v, C_a * h, kernel_size=1, groups=C_a),
-            GlobalLayerNorm1D(C_a * h),
+            nn.Conv1d(C_v, C_a * num_heads, kernel_size=1, groups=C_a),
+            GlobalLayerNorm1D(C_a * num_heads),
         )
 
     def forward(self, audio_embedding, video_embedding):
@@ -82,7 +91,7 @@ class AttentionFusion(nn.Module):
 
         v_h = self.f1(video_embedding)
 
-        v_m = v_h.reshape(B, C_a, self.h, T_v)
+        v_m = v_h.reshape(B, C_a, self.num_heads, T_v)
 
         v_h = v_m.mean(dim=2)
 
@@ -94,11 +103,21 @@ class AttentionFusion(nn.Module):
 
 
 class CAF(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        C_v: int,
+        C_a: int,
+        num_heads: int = 4,
+        use_bn2d: bool = False,
+        *args,
+        **kwargs
+    ):
         super().__init__()
 
-        self.attention_fusion = AttentionFusion(*args, **kwargs)
-        self.gated_fusion = GatedFusion(*args, **kwargs)
+        self.attention_fusion = AttentionFusion(
+            C_v, C_a, num_heads, use_bn2d, *args, **kwargs
+        )
+        self.gated_fusion = GatedFusion(C_v, C_a, use_bn2d, *args, **kwargs)
 
     def forward(self, audio_embedding, video_embedding, *args, **kwargs):
         """
