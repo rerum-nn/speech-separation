@@ -50,7 +50,7 @@ def main(config):
     signal_length = dataloaders["train"].dataset[0]["mix"].shape[1]
     in_freq, in_frames = audio_encoder.get_input_shape(signal_length)
     out_freq, out_frames = audio_encoder.get_output_shape(signal_length)
-
+    
     # build model architecture, then print to console
     model = instantiate(config.model, in_freq=in_freq, in_frames=in_frames, out_freq=out_freq, out_frames=out_frames).to(device)
     logger.info(model)

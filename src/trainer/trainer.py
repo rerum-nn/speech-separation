@@ -43,7 +43,7 @@ class Trainer(BaseTrainer):
         if self.modality == "audiovideo":
             video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
             video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
-            batch['video_features'] = torch.cat([video_features1, video_features2], dim=1)
+            batch['video_features'] = torch.cat([video_features1.unsqueeze(1), video_features2.unsqueeze(1)], dim=1)
 
         with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
             outputs = self.model(**batch)
@@ -79,6 +79,9 @@ class Trainer(BaseTrainer):
             batch['predicted_source1'] = batch['signal1']
             batch['predicted_source2'] = batch['signal2']
             batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+        elif 'magnit' in batch and 'phase' in batch:
+            batch['predicted'] = self.audio_encoder.decode(batch['magnit'], batch['phase'], batch['mix_waveform_len'], device=self.device)
+            batch['target'] = batch['source1'].to(self.device)
         else:
             raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
             
@@ -142,6 +145,9 @@ class Trainer(BaseTrainer):
                 self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
                 self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
                 self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
+
+            if "magnit" in batch:
+                self.log_spectrogram(batch['magnit'][i], f"{name}_magnit")
 
             self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
 
