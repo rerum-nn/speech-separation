@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from src.model.rtfs_net_layers.utils import Permute
+from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm2D, GlobalLayerNorm1D
 import torch.nn.functional as F
 import math
 
@@ -14,17 +15,20 @@ class CompressionPhase(nn.Module):
         self.is_2d = is_2d
 
         Conv = nn.Conv2d if is_2d else nn.Conv1d
-        BatchNorm = nn.BatchNorm2d if is_2d else nn.BatchNorm1d
+        GlobalLayerNorm = GlobalLayerNorm2D if is_2d else GlobalLayerNorm1D
 
-        self.downstream = Conv(in_channels, hid_channels, kernel_size=1, stride=1, padding=0)
+        self.downstream = nn.Sequential(
+            Conv(in_channels, hid_channels, kernel_size=1, stride=1, padding=0),
+            GlobalLayerNorm(hid_channels)
+        )
         self.compression_phase = nn.ModuleList()
 
         for _ in range(compression_blocks):
             self.compression_phase.append(
                 nn.Sequential(
                     Conv(hid_channels, hid_channels, kernel_size=kernel_size, stride=stride, padding=0, groups=hid_channels),
-                    BatchNorm(hid_channels),
-                    nn.ReLU(inplace=True)
+                    GlobalLayerNorm(hid_channels),
+                    nn.ReLU()
                 )
             )
 
@@ -57,8 +61,8 @@ class DualPathRNN(nn.Module):
         self.stride = stride
 
         self.unfold = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
-        self.ln1 = nn.LayerNorm(channel_dim)
-        self.ln2 = nn.LayerNorm(channel_dim)
+        self.ln1 = GlobalLayerNorm2D(channel_dim)
+        self.ln2 = GlobalLayerNorm2D(channel_dim)
 
         self.rnn1 = nn.LSTM(channel_dim * kernel_size, hidden_dim, num_layers=rnn_layers, batch_first=True, bidirectional=True)
         self.rnn2 = nn.LSTM(channel_dim * kernel_size, hidden_dim, num_layers=rnn_layers, batch_first=True, bidirectional=True)
@@ -66,20 +70,18 @@ class DualPathRNN(nn.Module):
         self.tconv1 = nn.ConvTranspose1d(hidden_dim * 2, channel_dim, kernel_size=kernel_size, stride=stride)
         self.tconv2 = nn.ConvTranspose1d(hidden_dim * 2, channel_dim, kernel_size=kernel_size, stride=stride)
 
-        padded_freq_dim = math.ceil((freq_dim - kernel_size) / stride) * stride + kernel_size
-
     def forward(self, x):
         B, C, old_T, old_F = x.shape
         
+        assert self.freq_dim == old_F, "freq_dim must be equal to old_F"
+
         padded_freq_dim = math.ceil((self.freq_dim - self.kernel_size) / self.stride) * self.stride + self.kernel_size
         padded_time_dim = math.ceil((old_T - self.kernel_size) / self.stride) * self.stride + self.kernel_size
 
         x = F.pad(x, (0, padded_freq_dim - old_F, 0, padded_time_dim - old_T))
         
         x_residual = x 
-        x = x.permute(0, 2, 3, 1)
         x = self.ln1(x)
-        x = x.permute(0, 1, 3, 2)
         x = x.permute(0, 2, 1, 3).contiguous()
         x = x.view(B * padded_time_dim, C, padded_freq_dim)
         x = self.unfold(x.unsqueeze(-1))
@@ -91,9 +93,7 @@ class DualPathRNN(nn.Module):
         x = x + x_residual
 
         x_residual = x 
-        x = x.permute(0, 2, 3, 1)
         x = self.ln2(x)
-        x = x.permute(0, 3, 1, 2)
         x = x.permute(0, 3, 1, 2).contiguous()
         x = x.view(B * padded_freq_dim , C, padded_time_dim)
         x = self.unfold(x.unsqueeze(-1))
@@ -244,8 +244,8 @@ class RTFSBlock(nn.Module):
 
         self.compression_phase = CompressionPhase(in_dim, hidden_dim, compression_blocks, kernel_size=compression_kernel_size, stride=compression_stride)
         self.freq_dim = freq_dim
-        for i in range(compression_blocks):
-            self.freq_dim = (self.freq_dim - 4) // 2 + 1
+        for i in range(compression_blocks - 1):
+            self.freq_dim = (self.freq_dim - compression_kernel_size) // compression_stride + 1
 
         self.dual_path_rnn = DualPathRNN(hidden_dim, self.freq_dim, rnn_layers=rnn_layers, hidden_dim=rnn_hidden_dim, kernel_size=dual_path_kernel_size, stride=dual_path_stride)
         self.tf_self_attention = TFSelfAttention(hidden_dim, freq_dim=self.freq_dim, hidden_dim=self.freq_dim * 4, n_heads=n_heads)

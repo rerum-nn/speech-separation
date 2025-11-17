@@ -1,5 +1,5 @@
 defaults:
-  - model: rtfs_net
+  - model: debug_model
   - writer: cometml
   - metrics: main
   - datasets: onebatchtest
@@ -54,5 +54,4 @@ trainer:
   # from_pretrained: "" # null or path to the checkpoint dir with *.pth and config.yaml
   sample_rate: 16000
   modality: audiovideo
-  # max_grad_norm: 5.0
   # enable_grad_monitor: True

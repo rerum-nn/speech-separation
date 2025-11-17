@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm2D
 
 
 class AudioDecoder(nn.Module):
@@ -13,6 +14,8 @@ class AudioDecoder(nn.Module):
             padding=(kernel_size - 1) // 2,
             bias=bias,
         )
+        self.ln = GlobalLayerNorm2D(2)
+        self.relu = nn.ReLU()
 
     def forward(self, audio_embedding):
         """
@@ -26,7 +29,8 @@ class AudioDecoder(nn.Module):
 
         # TODO maybe add decoding for all targets
         x = self.conv(audio_embedding)
-
+        x = self.ln(x)
+        x = self.relu(x)
         magnit, phase = torch.chunk(x, 2, dim=1)
 
         return {"magnit": magnit, "phase": phase}
