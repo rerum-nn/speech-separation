@@ -160,3 +160,20 @@ def setup_saving_and_logging(config):
     logger.setLevel(logging.DEBUG)
 
     return logger
+
+
+def load_video_encoder_weights(video_encoder, weights_path):
+    checkpoint = torch.load(weights_path, map_location='cpu')
+    if isinstance(checkpoint, dict):        
+        if 'model_state_dict' in checkpoint:
+            state_dict_name = 'model_state_dict'
+        elif 'state_dict' in checkpoint:
+            state_dict_name = 'state_dict'
+        else:
+            raise ValueError(f"Unknown checkpoint format: {checkpoint}")
+
+        state_dict = checkpoint[state_dict_name]
+        filtered_dict = {k: v for k, v in state_dict.items() if k.startswith('trunk.') or k.startswith('frontend3D.')}
+        video_encoder.load_state_dict(filtered_dict)
+
+    return video_encoder

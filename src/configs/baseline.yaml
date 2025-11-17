@@ -17,6 +17,10 @@ audio_encoder:
     n_fft: 400
     hop_length: 160
     n_mels: 80
+video_encoder:
+  model:
+    _target_: src.video_encoder.Lipreading
+  weights: "data/video_encoder/lrw_resnet18_dctcn_video.pth"
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.OneCycleLR
   max_lr: 1e-2
@@ -30,7 +34,7 @@ trainer:
   log_step: 5
   n_epochs: 10
   epoch_len: 10
-  device_tensors: ["input_mix_spectrogram", "mix_spectrogram", "mix_phase", 'target', 'mix'] # which tensors should be on device (ex. GPU)
+  device_tensors: ["input_mix_spectrogram", "mix_spectrogram", "mix_phase", 'target', 'mix', "source1_mouth", "source2_mouth"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: False # if True, will override the previous run with the same name
@@ -48,3 +52,4 @@ trainer:
   save_on_keyboard_interrupt: False
   # from_pretrained: "" # null or path to the checkpoint dir with *.pth and config.yaml
   sample_rate: 16000
+  modality: audio # audio or audiovideo
