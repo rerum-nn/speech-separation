@@ -81,8 +81,6 @@ class Trainer(BaseTrainer):
             batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
         elif 'magnit' in batch and 'phase' in batch:
             batch['predicted'] = self.audio_encoder.decode(batch['magnit'], batch['phase'], batch['mix_waveform_len'], device=self.device)
-            batch['predicted'] = batch['predicted'] - torch.mean(batch['predicted'], dim=-1, keepdim=True)
-            batch['predicted'] = batch['predicted'] / torch.max(torch.abs(batch['predicted']), dim=-1, keepdim=True)[0]
             batch['target'] = batch['source1'].to(self.device)
         else:
             raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")

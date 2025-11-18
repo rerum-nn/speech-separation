@@ -87,8 +87,8 @@ class RTFSNet(nn.Module):
 
         self.audio_decoder = AudioDecoder(hidden_dim)
 
-    def forward(self, input_mix_spectrogram, mix_phase, video_features, *args, **kwargs):
-        encoded_audio = self.audio_encoder(input_mix_spectrogram.permute(0, 1, 3, 2), mix_phase.permute(0, 1, 3, 2))
+    def forward(self, mix_spectrogram, mix_phase, video_features, *args, **kwargs):
+        encoded_audio = self.audio_encoder(mix_spectrogram.permute(0, 1, 3, 2), mix_phase.permute(0, 1, 3, 2))
         encoded_video = video_features[:, 0, :, :].squeeze(1).permute(0, 2, 1)
 
         processed_audio = self.separation_network(encoded_audio, encoded_video)
