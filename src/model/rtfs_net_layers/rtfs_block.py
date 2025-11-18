@@ -60,7 +60,9 @@ class DualPathRNN(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
 
-        self.unfold = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
+        self.unfold1 = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
+        self.unfold2 = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
+
         self.ln1 = GlobalLayerNorm2D(channel_dim)
         self.ln2 = GlobalLayerNorm2D(channel_dim)
 
@@ -84,7 +86,7 @@ class DualPathRNN(nn.Module):
         x = self.ln1(x)
         x = x.permute(0, 2, 1, 3).contiguous()
         x = x.view(B * padded_time_dim, C, padded_freq_dim)
-        x = self.unfold(x.unsqueeze(-1))
+        x = self.unfold1(x.unsqueeze(-1))
         x = x.permute(0, 2, 1)
         x = self.rnn1(x)[0]
         x = x.permute(0, 2, 1)
@@ -96,7 +98,7 @@ class DualPathRNN(nn.Module):
         x = self.ln2(x)
         x = x.permute(0, 3, 1, 2).contiguous()
         x = x.view(B * padded_freq_dim , C, padded_time_dim)
-        x = self.unfold(x.unsqueeze(-1))
+        x = self.unfold2(x.unsqueeze(-1))
         x = x.permute(0, 2, 1)
         x = self.rnn2(x)[0]
         x = x.permute(0, 2, 1)
@@ -160,6 +162,8 @@ class TFSelfAttention(nn.Module):
         )
 
     def forward(self, x):
+        x_residual = x
+
         B, C, T, F = x.shape
 
         Q, K, V = [], [], []
@@ -181,7 +185,7 @@ class TFSelfAttention(nn.Module):
         V = V.reshape(V.shape[0], V.shape[1], -1)
 
         attention = (Q @ K.transpose(-2, -1)) / (self.hidden_dim ** 0.5)
-        attention = nn.functional.softmax(attention, dim=2)
+        attention = nn.functional.softmax(attention, dim=-1)
         A = attention @ V
 
         A = A.view(old_shape)
@@ -192,7 +196,7 @@ class TFSelfAttention(nn.Module):
         x = x.contiguous().view(B, self.channel_dim, T, F)
         x = self.attn_concat_proj(x)
 
-        return x
+        return x + x_residual
 
 class AttentionReconstruction(nn.Module):
     def __init__(self, channel_dim, is_2d=True):
@@ -203,20 +207,21 @@ class AttentionReconstruction(nn.Module):
         Conv = nn.Conv2d if is_2d else nn.Conv1d
 
         self.w1 = nn.Sequential(
-            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=4, stride=1, padding="same", groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
+            nn.Sigmoid()
         )
         self.w2 = nn.Sequential(
-            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=4, stride=1, padding="same", groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
         )
         self.w3 = nn.Sequential(
-            Conv(channel_dim, channel_dim, kernel_size=1, stride=1, padding=0, groups=channel_dim),
+            Conv(channel_dim, channel_dim, kernel_size=4, stride=1, padding="same", groups=channel_dim),
             nn.GroupNorm(num_groups=1, num_channels=channel_dim),
         )
 
     def forward(self, m, n):
-        x1 = F.interpolate(F.sigmoid(self.w1(n)), size=m.shape[2:], mode='nearest')
+        x1 = F.interpolate(self.w1(n), size=m.shape[2:], mode='nearest')
         x2 = self.w2(m)
         x3 = F.interpolate(self.w3(n), size=m.shape[2:], mode='nearest')
 
@@ -256,13 +261,11 @@ class RTFSBlock(nn.Module):
 
     def forward(self, x):
         x_residual = x
-
+        
         x, A = self.compression_phase(x)
 
         x = self.dual_path_rnn(x)
-        x_tf_attn_res = x
         x = self.tf_self_attention(x)
-        x = x + x_tf_attn_res
 
         new_A = []
         for Ai in A:
@@ -278,7 +281,7 @@ class RTFSBlock(nn.Module):
             new_A = next_level
 
         assert len(new_A) == 1
-        x = self.upsampling(new_A[0]) + x_residual
+        x = self.upsampling(new_A[0])
 
-        return x
+        return x + x_residual
         

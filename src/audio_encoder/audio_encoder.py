@@ -36,7 +36,7 @@ class AudioEncoder:
         return torchaudio.functional.spectrogram(audio, pad=0, normalized=False, n_fft=self.n_fft, window=window, win_length=self.win_length, hop_length=self.hop_length, power=None).abs()
 
     def decode(self, magnit: torch.Tensor, phase: torch.Tensor, length: int, device: str = "cpu") -> torch.Tensor:
-        spectrogram = magnit * torch.exp(1j * phase)
+        spectrogram = torch.complex(magnit, phase)
         window = self.window_fn(self.win_length).to(device)
         return torchaudio.functional.inverse_spectrogram(spectrogram, pad=0, normalized=False, length=length, n_fft=self.n_fft, window=window, win_length=self.win_length, hop_length=self.hop_length)
 

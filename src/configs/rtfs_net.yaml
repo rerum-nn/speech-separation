@@ -24,7 +24,7 @@ video_encoder:
   weights: "data/video_encoder/lrw_resnet18_dctcn_video.pth"
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.OneCycleLR
-  max_lr: 1e-2
+  max_lr: 1e-3
   pct_start: 0.1
   steps_per_epoch: ${trainer.epoch_len}
   epochs: ${trainer.n_epochs}
@@ -54,5 +54,5 @@ trainer:
   # from_pretrained: "" # null or path to the checkpoint dir with *.pth and config.yaml
   sample_rate: 16000
   modality: audiovideo
-  # max_grad_norm: 5.0
+  max_grad_norm: 5.0
   # enable_grad_monitor: True

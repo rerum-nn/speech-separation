@@ -39,13 +39,13 @@ class RTFSSeparationNetwork(nn.Module):
         self.caf = CAF(C_v=video_dim, C_a=audio_dim, h=n_heads)
 
     def forward(self, a, v):
+        a0 = a
         processed_audio = self.rtfs_block(a)
         processed_video = self.video_preprocessor(v)
 
         processed_audio = self.caf(processed_audio, processed_video)
-
         for _ in range(self.rtfs_blocks_num):
-            processed_audio = self.rtfs_block(processed_audio)
+            processed_audio = self.rtfs_block(processed_audio + a0)
 
         return processed_audio
 

@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm2D
 
 class AudioEncoder(nn.Module):
     def __init__(self, out_channels, kernel_size=3, bias: bool = False, *args, **kwargs):
@@ -14,8 +12,6 @@ class AudioEncoder(nn.Module):
             padding=(kernel_size - 1) // 2,
             bias=bias,
         )
-
-        self.ln = GlobalLayerNorm2D(out_channels)
 
     def forward(self, magnit, phase):
         """
@@ -30,7 +26,5 @@ class AudioEncoder(nn.Module):
         x = torch.cat([magnit, phase], dim=1)
 
         x = self.conv(x)
-        x = self.ln(x)
-        x = F.relu(x)
 
         return x

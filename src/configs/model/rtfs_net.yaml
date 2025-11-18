@@ -1,1 +1,10 @@
 _target_: src.model.RTFSNet
+hidden_dim: 256
+processing_dim: 64
+rtfs_blocks_num: 12
+video_encoder_dim: 512
+rnn_layers: 4
+rnn_hidden_dim: 32
+vp_compression_blocks: 4
+ap_compression_blocks: 2
+n_heads: 4
