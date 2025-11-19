@@ -8,7 +8,7 @@ class DPRNNTasNet(nn.Module):
             length,
             chunk_length,
             hop_length,
-            hidden_dim=512, 
+            hidden_dim=64, 
             dprnn_blocks=6,
             rnn_hidden_dim=128,
             kernel_size=3,
