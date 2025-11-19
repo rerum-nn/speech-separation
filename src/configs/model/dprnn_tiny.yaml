@@ -1,0 +1,7 @@
+_target_: src.model.dprnn.DPRNNTasNet
+dprnn_blocks: 3
+length: 32000
+rnn_hidden_dim: 64
+chunk_length: 250
+hop_length: 125
+hidden_dim: 32
