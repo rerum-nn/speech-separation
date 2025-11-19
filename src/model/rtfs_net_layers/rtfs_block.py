@@ -19,7 +19,8 @@ class CompressionPhase(nn.Module):
 
         self.downstream = nn.Sequential(
             Conv(in_channels, hid_channels, kernel_size=1, stride=1, padding=0),
-            GlobalLayerNorm(hid_channels)
+            GlobalLayerNorm(hid_channels),
+            nn.PReLU()
         )
         self.compression_phase = nn.ModuleList()
 
@@ -27,8 +28,7 @@ class CompressionPhase(nn.Module):
             self.compression_phase.append(
                 nn.Sequential(
                     Conv(hid_channels, hid_channels, kernel_size=kernel_size, stride=stride, padding=0, groups=hid_channels),
-                    GlobalLayerNorm(hid_channels),
-                    nn.ReLU()
+                    GlobalLayerNorm(hid_channels)
                 )
             )
 
@@ -75,7 +75,7 @@ class DualPathRNN(nn.Module):
     def forward(self, x):
         B, C, old_T, old_F = x.shape
         
-        assert self.freq_dim == old_F, "freq_dim must be equal to old_F"
+        assert self.freq_dim == old_F, f"freq_dim {self.freq_dim} must be equal to old_F {old_F}"
 
         padded_freq_dim = math.ceil((self.freq_dim - self.kernel_size) / self.stride) * self.stride + self.kernel_size
         padded_time_dim = math.ceil((old_T - self.kernel_size) / self.stride) * self.stride + self.kernel_size
@@ -284,4 +284,3 @@ class RTFSBlock(nn.Module):
         x = self.upsampling(new_A[0])
 
         return x + x_residual
-        

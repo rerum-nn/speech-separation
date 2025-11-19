@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class AudioEncoder(nn.Module):
-    def __init__(self, out_channels, kernel_size=3, bias: bool = False, *args, **kwargs):
+    def __init__(self, out_channels, kernel_size=3, bias: bool = False, n_fft=256, win_length=256, hop_length=128, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.conv = nn.Conv2d(
@@ -13,18 +13,23 @@ class AudioEncoder(nn.Module):
             bias=bias,
         )
 
-    def forward(self, magnit, phase):
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
+
+    def forward(self, audio):
         """
         Args:
-            magnit (Tensor): (B, 1, T_a, F)
-            phase (Tensor): (B, 1, T_a, F)
+            audio (Tensor): (B, 1, T_a)
 
         Returns:
             Tensor: (B, C_a, T_a, F)
         """
 
-        x = torch.cat([magnit, phase], dim=1)
+        spectrogram = torch.view_as_real(torch.stft(audio.squeeze(1), n_fft=self.n_fft, hop_length=self.hop_length, win_length=self.win_length, return_complex=True))
+        magnit, phase = spectrogram[..., 0].unsqueeze(1).transpose(-1, -2), spectrogram[..., 1].unsqueeze(1).transpose(-1, -2)
 
+        x = torch.cat([magnit, phase], dim=1)
         x = self.conv(x)
 
         return x

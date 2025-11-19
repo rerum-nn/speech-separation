@@ -4,8 +4,12 @@ from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm2D
 
 
 class AudioDecoder(nn.Module):
-    def __init__(self, in_channels, kernel_size=3, bias: bool = True, *args, **kwargs):
+    def __init__(self, in_channels, kernel_size=3, bias: bool = True, n_fft=256, win_length=256, hop_length=128, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
 
         self.conv = nn.ConvTranspose2d(
             in_channels=in_channels,
@@ -20,9 +24,7 @@ class AudioDecoder(nn.Module):
         Args:
             audio_embedding (Tensor): (B, C_a, T_a, F)
         Returns:
-            dict with:
-                magnit: (B, 1, T_a, F)
-                phase: (B, 1, T_a, F)
+            Tensor: (B, 1, T_a)
         """
 
         # TODO maybe add decoding for all targets
@@ -30,4 +32,7 @@ class AudioDecoder(nn.Module):
         
         magnit, phase = torch.chunk(x, 2, dim=1)
 
-        return {"magnit": magnit, "phase": phase}
+        spectrogram = torch.complex(magnit, phase).squeeze(1).transpose(-1, -2)
+        audio = torch.istft(spectrogram, n_fft=self.n_fft, hop_length=self.hop_length, win_length=self.win_length).unsqueeze(1)
+
+        return audio

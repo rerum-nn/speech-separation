@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from src.model.rtfs_net_layers import AudioEncoder, AudioDecoder, RTFSBlock, VideoPreprocessor, CAF, S3MaskGenerator
 
@@ -63,12 +64,15 @@ class RTFSNet(nn.Module):
             vp_compression_blocks=4,
             ap_compression_blocks=2,
             n_heads=4,
+            n_fft=256,
+            win_length=256,
+            hop_length=128,
             *args, **kwargs):
         super().__init__()
 
         self.freq_dim = in_freq
 
-        self.audio_encoder = AudioEncoder(hidden_dim)
+        self.audio_encoder = AudioEncoder(hidden_dim, n_fft=n_fft, win_length=win_length, hop_length=hop_length)
 
         self.separation_network = RTFSSeparationNetwork(
             processing_dim=processing_dim, 
@@ -85,21 +89,24 @@ class RTFSNet(nn.Module):
 
         self.s3_mask_generator = S3MaskGenerator(hidden_dim)
 
-        self.audio_decoder = AudioDecoder(hidden_dim)
+        self.audio_decoder = AudioDecoder(hidden_dim, n_fft=n_fft, win_length=win_length, hop_length=hop_length)
 
-    def forward(self, mix_spectrogram, mix_phase, video_features, *args, **kwargs):
-        encoded_audio = self.audio_encoder(mix_spectrogram.permute(0, 1, 3, 2), mix_phase.permute(0, 1, 3, 2))
-        encoded_video = video_features[:, 0, :, :].squeeze(1).permute(0, 2, 1)
+    def forward(self, mix, video_features, *args, **kwargs):
+        encoded_audio = self.audio_encoder(mix)
+        encoded_videos = [video_features[:, i, :, :].squeeze(1).permute(0, 2, 1) for i in range(video_features.shape[1])]
 
-        processed_audio = self.separation_network(encoded_audio, encoded_video)
-        
-        separated_audio = self.s3_mask_generator(processed_audio, encoded_audio)
+        estimated_audios = []
+        for encoded_video in encoded_videos:
+            processed_audio = self.separation_network(encoded_audio, encoded_video)
+            
+            separated_audio = self.s3_mask_generator(processed_audio, encoded_audio)
 
-        estimated_audio = self.audio_decoder(separated_audio)
-        estimated_magnit = estimated_audio['magnit']
-        estimated_phase = estimated_audio['phase']
+            estimated_audio = self.audio_decoder(separated_audio)
+            estimated_audios.append(estimated_audio)
 
-        return {"magnit": estimated_magnit.permute(0, 1, 3, 2), "phase": estimated_phase.permute(0, 1, 3, 2)}
+        estimated_audios = torch.cat(estimated_audios, dim=1)
+
+        return {"predicted": estimated_audios}
 
     def __str__(self):
         """

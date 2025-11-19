@@ -75,15 +75,6 @@ class Trainer(BaseTrainer):
             batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
             batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
             batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
-        elif 'signal1' in batch and 'signal2' in batch:
-            batch['predicted_source1'] = batch['signal1']
-            batch['predicted_source2'] = batch['signal2']
-            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
-        elif 'magnit' in batch and 'phase' in batch:
-            batch['predicted'] = self.audio_encoder.decode(batch['magnit'], batch['phase'], batch['mix_waveform_len'], device=self.device)
-            batch['target'] = batch['source1'].to(self.device)
-        else:
-            raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
             
         return batch
 
@@ -145,9 +136,6 @@ class Trainer(BaseTrainer):
                 self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
                 self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
                 self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
-
-            if "magnit" in batch:
-                self.log_spectrogram(batch['magnit'][i], f"{name}_magnit")
 
             self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
 
