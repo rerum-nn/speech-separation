@@ -1,4 +1,6 @@
+import torch
 import torch.nn as nn
+import math
 
 from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm1D
 from src.model.rtfs_net_layers.rtfs_block import (
@@ -32,6 +34,7 @@ class ConvFFN(nn.Module):
             ),
             GlobalLayerNorm1D(in_channels * expansion_factor),
             nn.ReLU(inplace=True),
+            nn.Dropout(drop),
         )
 
         self.project = nn.Sequential(
@@ -42,12 +45,31 @@ class ConvFFN(nn.Module):
                 bias=False,
             ),
             GlobalLayerNorm1D(in_channels),
+            nn.Dropout(drop)
         )
 
     def forward(self, x):
         x = self.expand(x)
         x = self.depth_wise(x)
         x = self.project(x)
+        return x
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, in_dim, max_length):
+        super().__init__()
+
+        pe = torch.zeros(max_length, in_dim)
+        position = torch.arange(0, max_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, in_dim, 2, dtype=torch.float) * -(math.log(10000.0) / in_dim))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, : x.size(1)]
         return x
 
 
@@ -65,7 +87,7 @@ class MultiHeadAttention(nn.Module):
         self.input_dim = input_dim
         self.is_causal = is_causal
 
-        self.ln = nn.LayerNorm(input_dim)
+        self.ln1 = nn.LayerNorm(input_dim)
         self.mhsa = nn.MultiheadAttention(
             embed_dim=input_dim,
             num_heads=num_heads,
@@ -73,11 +95,16 @@ class MultiHeadAttention(nn.Module):
             bias=attn_bias,
             batch_first=True,
         )
+        self.ln2 = nn.LayerNorm(input_dim)
+
+        self.pe = PositionalEncoding(input_dim, max_length=100)
 
     def forward(self, x):
         x = x.transpose(1, 2)
-        x = self.ln(x)
+        x = self.ln1(x)
+        x = self.pe(x)
         x, _ = self.mhsa(x, x, x, need_weights=False, is_causal=self.is_causal)
+        x = self.ln2(x)
         x = x.transpose(1, 2)
         return x
 
@@ -114,6 +141,7 @@ class VideoPreprocessor(nn.Module):
         compression_blocks=2,
         compression_kernel_size=4,
         compression_stride=2,
+        dropout=0.1,
     ):
         super().__init__()
 
@@ -128,7 +156,7 @@ class VideoPreprocessor(nn.Module):
             is_2d=False,
         )
 
-        self.attention = TDANetAttentionBlock(hidden_dim, 8, False, 0.1)
+        self.attention = TDANetAttentionBlock(hidden_dim, 8, False, dropout)
 
         self.attention_reconstruction = AttentionReconstruction(hidden_dim, is_2d=False)
 
