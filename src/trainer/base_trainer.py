@@ -248,7 +248,6 @@ class BaseTrainer:
         with tqdm(desc="train", total=self.epoch_len, initial=self._last_local_step) as pbar:
             for batch_idx, batch in enumerate(self.train_dataloader):
                 try:
-                    self.optimizer.zero_grad()
                     batch = self.process_batch(
                         batch,
                         metrics=self.train_metrics,
@@ -260,7 +259,6 @@ class BaseTrainer:
                         continue
                     else:
                         raise e
-
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                     self.scaler.unscale_(self.optimizer)
                     self._clip_grad_norm()
