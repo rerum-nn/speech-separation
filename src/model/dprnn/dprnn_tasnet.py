@@ -26,8 +26,8 @@ class DPRNNTasNet(nn.Module):
         embedding = self.encoder(mix)
         masks = self.dprnn(embedding)
         masked = masks * embedding.unsqueeze(1)
-        predictions = [self.decoder(masked[:, i, :, :].squeeze(1)) for i in range(masked.shape[1])]
-        return {"signal1": predictions[0], "signal2": predictions[1]}
+        predictions = [self.decoder(masked[:, i, :, :]) for i in range(masked.shape[1])]
+        return {"signal1": predictions[0].unsqueeze(1), "signal2": predictions[1].unsqueeze(1)}
 
     def __str__(self):
         """

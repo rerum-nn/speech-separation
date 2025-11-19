@@ -240,7 +240,6 @@ class BaseTrainer:
         with tqdm(desc="train", total=self.epoch_len, initial=self._last_local_step) as pbar:
             for batch_idx, batch in enumerate(self.train_dataloader):
                 try:
-                    self.optimizer.zero_grad()
                     batch = self.process_batch(
                         batch,
                         metrics=self.train_metrics,
