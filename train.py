@@ -63,7 +63,7 @@ def main(config):
         for metric_config in config.metrics.get(metric_type, []):
             # use text_encoder in metrics
             metrics[metric_type].append(
-                instantiate(metric_config, device=device)
+                instantiate(metric_config, device=device, use_pit=config.trainer.get("use_pit", True))
             )
 
     # build optimizer, learning rate scheduler

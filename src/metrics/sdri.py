@@ -1,4 +1,4 @@
-from torchmetrics.functional.audio import signal_distortion_ratio
+from torchmetrics.audio import SignalDistortionRatio
 
 from src.metrics.base_metric import ImprovementPermutationInvariantMetric
 
@@ -10,5 +10,5 @@ class SDRi(ImprovementPermutationInvariantMetric):
 
     def __init__(self, *args, **kwargs):
         super().__init__(
-            metric_func=signal_distortion_ratio, eval_func="max", *args, **kwargs
+            metric_func=SignalDistortionRatio(), eval_func="max", *args, **kwargs
         )

@@ -26,12 +26,15 @@ class BaseMetric:
 
 
 class PermutationInvariantMetric(BaseMetric):
-    def __init__(self, metric_func, eval_func: str = "max", device: str = "cpu", *args, **kwargs):
+    def __init__(self, metric_func, eval_func: str = "max", use_pit: bool = True, device: str = "cpu", *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.metric = PermutationInvariantTraining(
-            metric_func=metric_func, eval_func=eval_func
-        ).to(device)
+        if use_pit:
+            self.metric = PermutationInvariantTraining(
+                metric_func=metric_func, eval_func=eval_func
+            ).to(device)
+        else:
+            self.metric = metric_func.to(device)
 
     def __call__(self, predicted: Tensor, target: Tensor, **batch):
         """

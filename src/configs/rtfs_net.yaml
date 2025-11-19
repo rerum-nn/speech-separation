@@ -1,7 +1,7 @@
 defaults:
   - model: rtfs_net
   - writer: cometml
-  - metrics: main
+  - metrics: all
   - datasets: onebatchtest
   - dataloader: main
   - transforms: example_only_instance
@@ -56,3 +56,4 @@ trainer:
   modality: audiovideo
   max_grad_norm: 5.0
   # enable_grad_monitor: True
+  use_pit: False
