@@ -13,32 +13,30 @@ class DPRNNBlock(nn.Module):
 
         self.intra_rnn = nn.LSTM(self.in_dim, rnn_hidden_dim, batch_first=True, bidirectional=True)
         self.intra_linear = nn.Linear(rnn_hidden_dim * 2, self.in_dim)
-        self.intra_layer_norm = nn.LayerNorm([self.frames, self.chunk_length, self.in_dim])
+        self.intra_layer_norm = nn.GroupNorm(1, self.in_dim)
 
         self.inter_rnn = nn.LSTM(self.in_dim, rnn_hidden_dim, batch_first=True, bidirectional=True)
         self.inter_linear = nn.Linear(rnn_hidden_dim * 2, self.in_dim)
-        self.inter_layer_norm = nn.LayerNorm([self.chunk_length, self.frames, self.in_dim])
+        self.inter_layer_norm = nn.GroupNorm(1, self.in_dim)
 
     def forward(self, x):
         B, C, K, S = x.shape
 
-        x = x.permute(0, 3, 2, 1)
         x_residual = x
+        x = x.permute(0, 3, 2, 1)
         x = x.reshape(B * self.frames, self.chunk_length, self.in_dim)
         x = self.intra_rnn(x)[0]
         x = self.intra_linear(x)
-        x = x.view(B, self.frames, self.chunk_length, self.in_dim)
+        x = x.view(B, self.frames, self.chunk_length, self.in_dim).permute(0, 3, 2, 1)
         x = self.intra_layer_norm(x) + x_residual
 
-        x = x.permute(0, 2, 1, 3)
         x_residual = x
+        x = x.permute(0, 2, 3, 1)
         x = x.reshape(B * self.chunk_length, self.frames, self.in_dim)
         x = self.inter_rnn(x)[0]
         x = self.inter_linear(x)
-        x = x.view(B, self.chunk_length, self.frames, self.in_dim)
+        x = x.view(B, self.chunk_length, self.frames, self.in_dim).permute(0, 3, 1, 2)
         x = self.inter_layer_norm(x) + x_residual
-
-        x = x.permute(0, 3, 1, 2)
 
         return x
 
