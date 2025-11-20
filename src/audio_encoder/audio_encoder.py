@@ -1,12 +1,19 @@
+import math
 import re
 
 import torch
 import torchaudio
 
-import math
 
 class AudioEncoder:
-    def __init__(self, n_fft=400, win_length=None, hop_length=None, window_fn=torch.hann_window, input_transform=None):
+    def __init__(
+        self,
+        n_fft=400,
+        win_length=None,
+        hop_length=None,
+        window_fn=torch.hann_window,
+        input_transform=None,
+    ):
         """
         Args:
             n_fft (int): number of FFT points.
@@ -22,23 +29,62 @@ class AudioEncoder:
         self.input_transform = input_transform
 
     def encode_input(self, audio: torch.Tensor) -> torch.Tensor:
-        audio = self.input_transform(audio)
+        audio = self.input_transform(audio)  # TODO: input_transform could be None
         return audio
 
-    def encode(self, audio: torch.Tensor, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+    def encode(
+        self, audio: torch.Tensor, device: str = "cpu"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         window = self.window_fn(self.win_length).to(device)
-        spectrogram = torchaudio.functional.spectrogram(audio, pad=0, normalized=False, n_fft=self.n_fft, window=window, win_length=self.win_length, hop_length=self.hop_length, power=None)
+        spectrogram = torchaudio.functional.spectrogram(
+            audio,
+            pad=0,
+            normalized=False,
+            n_fft=self.n_fft,
+            window=window,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            power=None,
+        )
         magnit, phase = spectrogram.abs(), spectrogram.angle()
         return magnit, phase
 
-    def get_spectrogram(self, audio: torch.Tensor, device: str = "cpu") -> torch.Tensor:
+    def get_spectrogram(
+        self, audio: torch.Tensor, device: str = "cpu"
+    ) -> (
+        torch.Tensor
+    ):  # TODO: Why the method needed? There are encode that does the same
         window = self.window_fn(self.win_length).to(device)
-        return torchaudio.functional.spectrogram(audio, pad=0, normalized=False, n_fft=self.n_fft, window=window, win_length=self.win_length, hop_length=self.hop_length, power=None).abs()
+        return torchaudio.functional.spectrogram(
+            audio,
+            pad=0,
+            normalized=False,
+            n_fft=self.n_fft,
+            window=window,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            power=None,
+        ).abs()
 
-    def decode(self, magnit: torch.Tensor, phase: torch.Tensor, length: int, device: str = "cpu") -> torch.Tensor:
+    def decode(
+        self,
+        magnit: torch.Tensor,
+        phase: torch.Tensor,
+        length: int,
+        device: str = "cpu",
+    ) -> torch.Tensor:
         spectrogram = magnit * torch.exp(1j * phase)
         window = self.window_fn(self.win_length).to(device)
-        return torchaudio.functional.inverse_spectrogram(spectrogram, pad=0, normalized=False, length=length, n_fft=self.n_fft, window=window, win_length=self.win_length, hop_length=self.hop_length)
+        return torchaudio.functional.inverse_spectrogram(
+            spectrogram,
+            pad=0,
+            normalized=False,
+            length=length,
+            n_fft=self.n_fft,
+            window=window,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+        )
 
     def get_input_shape(self, signal_length: int, *args, **kwargs) -> tuple[int, int]:
         sample = torch.randn(1, signal_length)

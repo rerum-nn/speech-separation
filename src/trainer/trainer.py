@@ -3,8 +3,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-import torch
-from src.logger.utils import plot_spectrogram, plot_images
+from src.logger.utils import plot_images, plot_spectrogram
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 
@@ -36,16 +35,18 @@ class Trainer(BaseTrainer):
         batch = self.move_batch_to_device(batch)
         batch = self.transform_batch(batch)  # transform batch on device -- faster
 
-        metric_funcs = self.metrics["inference"]
-        if self.is_train:
-            metric_funcs = self.metrics["train"]
+        metric_funcs = self.metrics["train" if self.is_train else "inference"]
 
         if self.modality == "audiovideo":
-            video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
-            video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
-            batch['video_features'] = torch.cat([video_features1, video_features2], dim=1)
+            video_features1 = self.video_encoder(batch["source1_mouth"].unsqueeze(1))
+            video_features2 = self.video_encoder(batch["source2_mouth"].unsqueeze(1))
+            batch["video_features"] = torch.cat(
+                [video_features1, video_features2], dim=1
+            )
 
-        with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
+        with torch.cuda.amp.autocast(
+            dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16
+        ):
             outputs = self.model(**batch)
             batch.update(outputs)
 
@@ -59,7 +60,10 @@ class Trainer(BaseTrainer):
             self.scaler.scale(loss).backward()
 
         # update metrics for each loss (in case of multiple losses)
-        if not self.is_train or self._last_local_step % self._n_steps_update_metrics == 0:
+        if (
+            not self.is_train
+            or self._last_local_step % self._n_steps_update_metrics == 0
+        ):
             for loss_name in self.config.writer.loss_names:
                 metrics.update(loss_name, batch[loss_name].item())
 
@@ -69,19 +73,37 @@ class Trainer(BaseTrainer):
         return batch
 
     def _get_predicted(self, batch):
-        if 'mask1' in batch and 'mask2' in batch:
-            batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1'].unsqueeze(1)
-            batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2'].unsqueeze(1)
-            batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
-            batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
-            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
-        elif 'signal1' in batch and 'signal2' in batch:
-            batch['predicted_source1'] = batch['signal1']
-            batch['predicted_source2'] = batch['signal2']
-            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+        if "mask1" in batch and "mask2" in batch:
+            batch["masked_spectrogram1"] = batch["mix_spectrogram"] * batch[
+                "mask1"
+            ].unsqueeze(1)
+            batch["masked_spectrogram2"] = batch["mix_spectrogram"] * batch[
+                "mask2"
+            ].unsqueeze(1)
+            batch["predicted_source1"] = self.audio_encoder.decode(
+                batch["masked_spectrogram1"],
+                batch["mix_phase"],
+                batch["mix_waveform_len"],
+                device=self.device,
+            )
+            batch["predicted_source2"] = self.audio_encoder.decode(
+                batch["masked_spectrogram2"],
+                batch["mix_phase"],
+                batch["mix_waveform_len"],
+                device=self.device,
+            )
+            batch["predicted"] = torch.cat(
+                [batch["predicted_source1"], batch["predicted_source2"]], dim=1
+            )
+        elif "signal1" in batch and "signal2" in batch:
+            batch["predicted_source1"] = batch["signal1"]
+            batch["predicted_source2"] = batch["signal2"]
+            batch["predicted"] = torch.cat(
+                [batch["predicted_source1"], batch["predicted_source2"]], dim=1
+            )
         else:
             raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
-            
+
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):
@@ -107,56 +129,96 @@ class Trainer(BaseTrainer):
         image = plot_spectrogram(spectrogram_for_plot)
         self.writer.add_image(name, image)
 
-    def log_audio(self, mix_audio, predicted_audios, target_audio=None, aug_mix_audio=None, name=""):
+    def log_audio(
+        self,
+        mix_audio,
+        predicted_audios,
+        target_audio=None,
+        aug_mix_audio=None,
+        name="",
+    ):
         if target_audio is not None:
             for i, target_audio in enumerate(target_audio):
-                self.writer.add_audio(f"{name}_target_audio_{i}", target_audio.detach().cpu(), sample_rate=self.sample_rate)
+                self.writer.add_audio(
+                    f"{name}_target_audio_{i}",
+                    target_audio.detach().cpu(),
+                    sample_rate=self.sample_rate,
+                )
 
         if aug_mix_audio is not None:
             for i, target_audio in enumerate(target_audio):
-                self.writer.add_audio(f"{name}_aug_mix_audio_{i}", aug_mix_audio.detach().cpu(), sample_rate=self.sample_rate)
+                self.writer.add_audio(
+                    f"{name}_aug_mix_audio_{i}",
+                    aug_mix_audio.detach().cpu(),
+                    sample_rate=self.sample_rate,
+                )
 
         for i, predicted_audio in enumerate(predicted_audios):
-            self.writer.add_audio(f"{name}_predicted_audio_{i}", predicted_audio.detach().cpu(), sample_rate=self.sample_rate)
+            self.writer.add_audio(
+                f"{name}_predicted_audio_{i}",
+                predicted_audio.detach().cpu(),
+                sample_rate=self.sample_rate,
+            )
 
-        self.writer.add_audio(f"{name}_mix_audio", mix_audio.detach().cpu(), sample_rate=self.sample_rate)
+        self.writer.add_audio(
+            f"{name}_mix_audio", mix_audio.detach().cpu(), sample_rate=self.sample_rate
+        )
 
     def log_images(self, images, subplots_names, name):
         images = images.detach().cpu()
         image = plot_images(images, subplots_names)
         self.writer.add_image(name, image)
 
-    def log_predictions(
-        self, metric_funcs, examples_to_log=2, **batch
-    ):
+    def log_predictions(self, metric_funcs, examples_to_log=2, **batch):
         rows = {}
         for i in range(examples_to_log):
-            name = Path(batch['mix_path'][i]).name.split('.')[0]
+            name = Path(batch["mix_path"][i]).name.split(".")[0]
 
-            self.log_spectrogram(batch['input_mix_spectrogram'][i], f"{name}_input_mix")
-            self.log_spectrogram(batch['original_mix_spectrogram'][i], f"{name}_original_mix")
-            self.log_spectrogram(batch['mix_spectrogram'][i], f"{name}_mix")
-        
-            if 'mask1' in batch and 'mask2' in batch:
-                self.log_spectrogram(batch['mask1'][i].unsqueeze(0), f"{name}_mask1")
-                self.log_spectrogram(batch['mask2'][i].unsqueeze(0), f"{name}_mask2")
-                self.log_spectrogram(batch['masked_spectrogram1'][i], f"{name}_masked_spectrogram1")
-                self.log_spectrogram(batch['masked_spectrogram2'][i], f"{name}_masked_spectrogram2")
+            self.log_spectrogram(batch["input_mix_spectrogram"][i], f"{name}_input_mix")
+            self.log_spectrogram(
+                batch["original_mix_spectrogram"][i], f"{name}_original_mix"
+            )
+            self.log_spectrogram(batch["mix_spectrogram"][i], f"{name}_mix")
 
-            self.log_audio(batch['original_mix'][i], batch['predicted'][i], batch['target'][i], batch['mix'][i] if batch['has_transforms'] else None, name)
+            if "mask1" in batch and "mask2" in batch:
+                self.log_spectrogram(batch["mask1"][i].unsqueeze(0), f"{name}_mask1")
+                self.log_spectrogram(batch["mask2"][i].unsqueeze(0), f"{name}_mask2")
+                self.log_spectrogram(
+                    batch["masked_spectrogram1"][i], f"{name}_masked_spectrogram1"
+                )
+                self.log_spectrogram(
+                    batch["masked_spectrogram2"][i], f"{name}_masked_spectrogram2"
+                )
+
+            self.log_audio(
+                batch["original_mix"][i],
+                batch["predicted"][i],
+                batch["target"][i],
+                batch["mix"][i] if batch["has_transforms"] else None,
+                name,
+            )
 
             if self.modality == "audiovideo":
-                mouth1 = batch['source1_mouth'][i][0].unsqueeze(0)
-                mouth2 = batch['source2_mouth'][i][0].unsqueeze(0)
+                mouth1 = batch["source1_mouth"][i][0].unsqueeze(0)
+                mouth2 = batch["source2_mouth"][i][0].unsqueeze(0)
                 mouths = torch.cat([mouth1.unsqueeze(0), mouth2.unsqueeze(0)], dim=0)
-                self.log_images(mouths, ["source1_mouth", "source2_mouth"], f"{name}_mouths")
+                self.log_images(
+                    mouths, ["source1_mouth", "source2_mouth"], f"{name}_mouths"
+                )
 
-            row = {
-                'step': self.writer.step
-            }
+            row = {"step": self.writer.step}
 
             for met in metric_funcs:
-                row[met.name] = met(predicted=batch['predicted'][i:i+1], target=batch['target'][i:i+1], mix=batch['mix'][i:i+1]).detach().cpu().item()
+                row[met.name] = (
+                    met(
+                        predicted=batch["predicted"][i : i + 1],
+                        target=batch["target"][i : i + 1],
+                        mix=batch["mix"][i : i + 1],
+                    )
+                    .detach()
+                    .cpu()
+                    .item()
+                )
 
             rows[name] = row
 

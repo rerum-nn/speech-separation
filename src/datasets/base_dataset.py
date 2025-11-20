@@ -82,7 +82,8 @@ class BaseDataset(Dataset):
             "original_mix": mix.clone()
             if self.instance_transforms is not None
             else mix,
-            "has_transforms": self.instance_transforms is not None and 'mix' in self.instance_transforms,
+            "has_transforms": self.instance_transforms is not None
+            and "mix" in self.instance_transforms,
         }
 
         if "source1_path" in data_dict:
@@ -112,10 +113,10 @@ class BaseDataset(Dataset):
         mix_spectrogram, mix_phase = self.audio_encoder.encode(instance_data["mix"])
         instance_data["mix_spectrogram"] = mix_spectrogram
         instance_data["mix_phase"] = mix_phase
-        
+
         original_mix_spectrogram = self.audio_encoder.get_spectrogram(
             instance_data["original_mix"]
-        )
+        )  # TODO: maybe just "original_mix_spectrogram = mix_spectrogram.clone()"?
         instance_data["original_mix_spectrogram"] = original_mix_spectrogram
 
         input_mix_spectrogram = self.audio_encoder.encode_input(instance_data["mix"])
@@ -131,7 +132,9 @@ class BaseDataset(Dataset):
 
     def load_audio(self, path):
         audio_tensor, sr = torchaudio.load(path)
-        audio_tensor = audio_tensor[0:1, :]  # remove all channels but the first
+        audio_tensor = audio_tensor[
+            0:1, :
+        ]  # TODO: а это зачем? он одноканальный, а если стерео не лучше ли среднее?
         if sr != self.target_sr:
             audio_tensor = torchaudio.functional.resample(
                 audio_tensor, sr, self.target_sr

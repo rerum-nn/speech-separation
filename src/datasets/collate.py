@@ -33,12 +33,12 @@ def collate_fn(dataset_items: list[dict]):
         "original_mix": collate_tensor(dataset_items, "original_mix"),
         "mix_len": dataset_items[0]["mix_len"],
         "mix_waveform_len": dataset_items[0]["mix"].shape[1],
-
         "mix_spectrogram": collate_tensor(dataset_items, "mix_spectrogram"),
         "mix_phase": collate_tensor(dataset_items, "mix_phase"),
         "input_mix_spectrogram": collate_tensor(dataset_items, "input_mix_spectrogram"),
-        "original_mix_spectrogram": collate_tensor(dataset_items, "original_mix_spectrogram"),
-
+        "original_mix_spectrogram": collate_tensor(
+            dataset_items, "original_mix_spectrogram"
+        ),
         "has_transforms": dataset_items[0]["has_transforms"],
     }
 
@@ -55,10 +55,8 @@ def collate_fn(dataset_items: list[dict]):
 
     if "source1_mouth" in dataset_items[0]:
         batch["source1_mouth"] = collate_tensor(dataset_items, "source1_mouth")
-        batch["source1_mouth"] = batch["source1_mouth"].float() / 255.0
 
     if "source2_mouth" in dataset_items[0]:
         batch["source2_mouth"] = collate_tensor(dataset_items, "source2_mouth")
-        batch["source2_mouth"] = batch["source2_mouth"].float() / 255.0
-        
+
     return batch
