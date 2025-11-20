@@ -22,7 +22,7 @@ class AudioEncoder:
         self.input_transform = input_transform
 
     def encode_input(self, audio: torch.Tensor) -> torch.Tensor:
-        audio = self.input_transform(audio)
+        audio = self.input_transform(audio) if self.input_transform is not None else audio
         return audio
 
     def encode(self, audio: torch.Tensor, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
@@ -42,7 +42,7 @@ class AudioEncoder:
 
     def get_input_shape(self, signal_length: int, *args, **kwargs) -> tuple[int, int]:
         sample = torch.randn(1, signal_length)
-        res = self.input_transform(sample)
+        res = self.input_transform(sample) if self.input_transform is not None else sample
         return res.shape[1], res.shape[2]
 
     def get_output_shape(self, signal_length: int) -> tuple[int, int]:

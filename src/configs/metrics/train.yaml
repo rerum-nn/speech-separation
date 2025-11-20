@@ -1,0 +1,6 @@
+train: []
+inference:
+  - _target_: src.metrics.SDRi
+    name: "SDRi"
+  - _target_: src.metrics.SI_SNRi
+    name: "SI_SNRi"

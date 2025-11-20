@@ -43,7 +43,7 @@ class Trainer(BaseTrainer):
         if self.modality == "audiovideo":
             video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
             video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
-            batch['video_features'] = torch.cat([video_features1, video_features2], dim=1)
+            batch['video_features'] = torch.cat([video_features1.unsqueeze(1), video_features2.unsqueeze(1)], dim=1)
 
         with torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=self.use_amp or self.use_amp_bf16):
             outputs = self.model(**batch)
@@ -75,12 +75,6 @@ class Trainer(BaseTrainer):
             batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
             batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
             batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
-        elif 'signal1' in batch and 'signal2' in batch:
-            batch['predicted_source1'] = batch['signal1']
-            batch['predicted_source2'] = batch['signal2']
-            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
-        else:
-            raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
             
         return batch
 
@@ -130,7 +124,7 @@ class Trainer(BaseTrainer):
         self, metric_funcs, examples_to_log=2, **batch
     ):
         rows = {}
-        for i in range(examples_to_log):
+        for i in range(min(examples_to_log, len(batch['mix_path']))):
             name = Path(batch['mix_path'][i]).name.split('.')[0]
 
             self.log_spectrogram(batch['input_mix_spectrogram'][i], f"{name}_input_mix")

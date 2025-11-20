@@ -259,7 +259,6 @@ class BaseTrainer:
                         continue
                     else:
                         raise e
-
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                     self.scaler.unscale_(self.optimizer)
                     self._clip_grad_norm()
