@@ -78,7 +78,6 @@ class BaseTrainer:
         if self.modality not in ["audio", "audiovideo"]:
             raise ValueError(f"Invalid modality: {self.modality}")
 
-
         self.device = device
         self.skip_oom = skip_oom
 
@@ -93,15 +92,19 @@ class BaseTrainer:
 
         self.use_amp = config.trainer.get("amp", False)
         self.use_amp_bf16 = config.trainer.get("amp_bf16", False)
-        self.scaler = torch.cuda.amp.GradScaler(enabled=(self.use_amp or self.use_amp_bf16))
-        self.amp_dtype = (
-            torch.bfloat16 if self.use_amp_bf16 else torch.float16
+        self.scaler = torch.cuda.amp.GradScaler(
+            enabled=(self.use_amp or self.use_amp_bf16)
         )
+        self.amp_dtype = torch.bfloat16 if self.use_amp_bf16 else torch.float16
 
         self.use_ema = config.trainer.get("ema", False)
         if self.use_ema:
             self.ema_coef = config.trainer.get("ema_coef", 0.9999)
-            self.model = torch.optim.swa_utils.AveragedModel(self.model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_coef), device=self.device)
+            self.model = torch.optim.swa_utils.AveragedModel(
+                self.model,
+                multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_coef),
+                device=self.device,
+            )
 
         self.gradient_accumulation_steps = self.cfg_trainer.get(
             "gradient_accumulation_steps", 1
@@ -127,7 +130,9 @@ class BaseTrainer:
         self.start_epoch = 1
         self.epochs = self.cfg_trainer.n_epochs
 
-        self._n_steps_update_metrics = self.cfg_trainer.get("n_steps_update_metrics", self.log_step)
+        self._n_steps_update_metrics = self.cfg_trainer.get(
+            "n_steps_update_metrics", self.log_step
+        )
 
         # configuration to monitor model performance and save best
 
@@ -153,7 +158,9 @@ class BaseTrainer:
         # setup visualization writer instance
         self.writer = writer
 
-        self.save_on_keyboard_interrupt = self.cfg_trainer.get("save_on_keyboard_interrupt", True)
+        self.save_on_keyboard_interrupt = self.cfg_trainer.get(
+            "save_on_keyboard_interrupt", True
+        )
 
         # define metrics
         self.metrics = metrics
@@ -191,7 +198,11 @@ class BaseTrainer:
         except KeyboardInterrupt as e:
             if self.save_on_keyboard_interrupt:
                 self.logger.info("Saving model on keyboard interrupt")
-                self._save_checkpoint(self._last_epoch, suffix=f"_{self._last_local_step}", save_best=False)
+                self._save_checkpoint(
+                    self._last_epoch,
+                    suffix=f"_{self._last_local_step}",
+                    save_best=False,
+                )
             raise e
 
     def _train_process(self):
@@ -245,7 +256,9 @@ class BaseTrainer:
         self.train_metrics.reset()
         self.writer.set_step((epoch - 1) * self.epoch_len + self._last_local_step)
         self.writer.add_scalar("epoch", epoch)
-        with tqdm(desc="train", total=self.epoch_len, initial=self._last_local_step) as pbar:
+        with tqdm(
+            desc="train", total=self.epoch_len, initial=self._last_local_step
+        ) as pbar:
             for batch_idx, batch in enumerate(self.train_dataloader):
                 try:
                     batch = self.process_batch(
@@ -267,13 +280,17 @@ class BaseTrainer:
                     self.scaler.update()
                     self.optimizer.zero_grad()
                     self.lr_scheduler.step()
-                    
+
                     # log current results
                     if self._last_local_step % self.log_step == 0:
-                        self.writer.set_step((epoch - 1) * self.epoch_len + self._last_local_step)
+                        self.writer.set_step(
+                            (epoch - 1) * self.epoch_len + self._last_local_step
+                        )
                         self.logger.debug(
                             "Train Epoch: {} {} Loss: {:.6f}".format(
-                                epoch, self._progress(self._last_local_step), batch["loss"].item()
+                                epoch,
+                                self._progress(self._last_local_step),
+                                batch["loss"].item(),
                             )
                         )
                         self.writer.add_scalar(
@@ -291,7 +308,7 @@ class BaseTrainer:
                     pbar.update(1)
 
                     if self._last_local_step >= self.epoch_len:
-                        break  
+                        break
 
         logs = last_train_metrics
 

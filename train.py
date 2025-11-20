@@ -2,13 +2,16 @@ import warnings
 
 import hydra
 import torch
-import torch
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
 from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
-from src.utils.init_utils import set_random_seed, setup_saving_and_logging, load_video_encoder_weights
+from src.utils.init_utils import (
+    load_video_encoder_weights,
+    set_random_seed,
+    setup_saving_and_logging,
+)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -23,6 +26,7 @@ def main(config):
     Args:
         config (DictConfig): hydra experiment config.
     """
+    OmegaConf.register_new_resolver("eval", eval)
     set_random_seed(config.trainer.seed)
 
     project_config = OmegaConf.to_container(config)
@@ -39,7 +43,9 @@ def main(config):
 
     if "video_encoder" in config:
         video_encoder = instantiate(config.video_encoder.model).to(device)
-        video_encoder = load_video_encoder_weights(video_encoder, config.video_encoder.weights)
+        video_encoder = load_video_encoder_weights(
+            video_encoder, config.video_encoder.weights
+        )
 
     sample_rate = config.trainer.sample_rate
 
@@ -52,7 +58,13 @@ def main(config):
     out_freq, out_frames = audio_encoder.get_output_shape(signal_length)
     
     # build model architecture, then print to console
-    model = instantiate(config.model, in_freq=in_freq, in_frames=in_frames, out_freq=out_freq, out_frames=out_frames).to(device)
+    model = instantiate(
+        config.model,
+        in_freq=in_freq,
+        in_frames=in_frames,
+        out_freq=out_freq,
+        out_frames=out_frames,
+    ).to(device)
     logger.info(model)
 
     use_pit = config.trainer.get("use_pit", True)
@@ -92,7 +104,7 @@ def main(config):
         epoch_len=epoch_len,
         logger=logger,
         writer=writer,
-        batch_transforms=batch_transforms,
+        batch_transforms=batch_transforms,  
         skip_oom=config.trainer.get("skip_oom", True),
     )
 
