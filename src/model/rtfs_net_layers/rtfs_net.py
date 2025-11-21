@@ -86,6 +86,7 @@ class RTFSNet(nn.Module):
             ap_compression_blocks=2,
             compression_blocks=0,
             n_heads=4,
+            n_spks=2,
             n_fft=256,
             win_length=256,
             hop_length=128,
@@ -95,6 +96,7 @@ class RTFSNet(nn.Module):
         assert hidden_dim % (2 ** compression_blocks) == 0, "hidden_dim must be divisible by 2 ** compression_blocks"
 
         self.freq_dim = in_freq // (2 ** compression_blocks)
+        self.n_spks = n_spks
 
         self.compression_steps = compression_blocks
         self.compression_blocks = nn.ModuleList([])
@@ -106,7 +108,7 @@ class RTFSNet(nn.Module):
             cur_dim = hidden_dim
         self.audio_encoder = AudioEncoder(cur_dim, n_fft=n_fft, win_length=win_length, hop_length=hop_length)
         self.audio_decoder = AudioDecoder(cur_dim, n_fft=n_fft, win_length=win_length, hop_length=hop_length)
-        self.s3_mask_generator = S3MaskGenerator(cur_dim)
+        self.s3_mask_generator = S3MaskGenerator(cur_dim, n_spks=n_spks)
 
         for i in range(compression_blocks):
             if i == 0:
@@ -157,22 +159,38 @@ class RTFSNet(nn.Module):
             skips.append(encoded_compressed_audio)
             encoded_compressed_audio = F.max_pool2d(encoded_compressed_audio, kernel_size=2, stride=2)
 
-        encoded_videos = [video_features[:, i, :, :].squeeze(1).permute(0, 2, 1) for i in range(video_features.shape[1])]
+        # encoded_videos = [video_features[:, i, :, :].squeeze(1).permute(0, 2, 1) for i in range(video_features.shape[1])]
 
-        estimated_audios = []
-        for encoded_video in encoded_videos:
-            processed_audio = self.separation_network(encoded_compressed_audio, encoded_video)
+        # estimated_audios = []
+        # for encoded_video in encoded_videos:
+        #     processed_audio = self.separation_network(encoded_compressed_audio, encoded_video)
             
-            for i in range(self.compression_steps):
-                skip = skips[self.compression_steps - i - 1] 
-                processed_audio = self.decompression_blocks[i](processed_audio, skip)
+        #     for i in range(self.compression_steps):
+        #         skip = skips[self.compression_steps - i - 1] 
+        #         processed_audio = self.decompression_blocks[i](processed_audio, skip)
 
-            separated_audio = self.s3_mask_generator(processed_audio, encoded_audio)
+        #     separated_audio = self.s3_mask_generator(processed_audio, encoded_audio)
 
-            estimated_audio = self.audio_decoder(separated_audio)
-            estimated_audios.append(estimated_audio)
+        #     estimated_audio = self.audio_decoder(separated_audio)
+        #     estimated_audios.append(estimated_audio)
 
-        estimated_audios = torch.cat(estimated_audios, dim=1)
+        # estimated_audios = torch.cat(estimated_audios, dim=1)
+
+
+        encoded_video = video_features.view(video_features.size(0), -1, video_features.size(3)).permute(0, 2, 1)
+
+        processed_audio = self.separation_network(encoded_compressed_audio, encoded_video)
+        
+        for i in range(self.compression_steps):
+            skip = skips[self.compression_steps - i - 1] 
+            processed_audio = self.decompression_blocks[i](processed_audio, skip)
+
+        separated_audio = self.s3_mask_generator(processed_audio, encoded_audio)
+
+        B = separated_audio.size(0)
+        separated_audio = separated_audio.view(B * self.n_spks, *separated_audio.shape[2:])
+        estimated_audio = self.audio_decoder(separated_audio)
+        estimated_audios = estimated_audio.view(B, self.n_spks, *estimated_audio.shape[2:])
 
         return {"predicted": estimated_audios}
 
