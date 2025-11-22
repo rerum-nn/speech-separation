@@ -16,7 +16,9 @@ class RTFSSeparationNetwork(nn.Module):
             vp_compression_blocks, 
             ap_compression_blocks, 
             n_heads, 
-            rtfs_blocks_num
+            rtfs_blocks_num,
+            caf_blocks_num,
+            caf_shared=True,
         ):
         super().__init__()
 
@@ -38,14 +40,26 @@ class RTFSSeparationNetwork(nn.Module):
             compression_kernel_size=3,
         )
 
-        self.caf = CAF(C_v=video_dim, C_a=audio_dim, h=n_heads)
+        self.caf_blocks_num = caf_blocks_num
+        self.caf_shared = caf_shared
+
+        if caf_shared:
+            self.caf = CAF(C_v=video_dim, C_a=audio_dim, h=n_heads)
+        else:
+            self.caf = nn.ModuleList([CAF(C_v=video_dim, C_a=audio_dim, h=n_heads) for _ in range(caf_blocks_num)])
 
     def forward(self, a, v):
         a0 = a
         processed_audio = self.rtfs_block(a)
         processed_video = self.video_preprocessor(v)
 
-        processed_audio = self.caf(processed_audio, processed_video)
+        if self.caf_shared:
+            for _ in range(self.caf_blocks_num):
+                processed_audio = self.caf(processed_audio, processed_video)
+        else:
+            for caf in self.caf:
+                processed_audio = caf(processed_audio, processed_video)
+
         for _ in range(self.rtfs_blocks_num):
             processed_audio = self.rtfs_block(processed_audio + a0)
 
@@ -89,6 +103,8 @@ class RTFSNet(nn.Module):
             n_fft=256,
             win_length=256,
             hop_length=128,
+            caf_blocks_num=1,
+            caf_shared=True,
             *args, **kwargs):
         super().__init__()
 
@@ -144,7 +160,9 @@ class RTFSNet(nn.Module):
             vp_compression_blocks=vp_compression_blocks, 
             ap_compression_blocks=ap_compression_blocks, 
             n_heads=n_heads, 
-            rtfs_blocks_num=rtfs_blocks_num
+            rtfs_blocks_num=rtfs_blocks_num,
+            caf_blocks_num=caf_blocks_num,
+            caf_shared=caf_shared,
         )
 
     def forward(self, mix, video_features, *args, **kwargs):
