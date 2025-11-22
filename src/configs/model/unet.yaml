@@ -1,1 +1,1 @@
-_target_: src.model.UNet
+_target_: src.model.unet.UNet

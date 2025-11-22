@@ -2,8 +2,8 @@ import math
 
 import torch.nn as nn
 
-from src.model.unet_layers.decoder import Decoder
-from src.model.unet_layers.encoder import Encoder
+from src.model.unet.decoder import Decoder
+from src.model.unet.encoder import Encoder
 
 
 class UNet(nn.Module):
