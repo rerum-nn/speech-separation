@@ -29,7 +29,7 @@ trainer:
   log_step: 5
   n_epochs: 10
   epoch_len: 157 # (20000 // 128 + 1)
-  device_tensors: ["input_mix_spectrogram", "mix_spectrogram", "mix_phase", 'target', 'mix'] # which tensors should be on device (ex. GPU)
+  device_tensors: ["input_mix_spectrogram", "mix_spectrogram", "mix_phase", 'target', 'mix', "source1_mouth", "source2_mouth"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: False # if True, will override the previous run with the same name
