@@ -1,0 +1,18 @@
+paths:
+  mix: null # path to dir with mix folder
+  ground_truth: null # path to dir with s1 and s2 folders
+  predictions: null # path to dir with s1 and s2 folders
+device: "auto"
+sample_rate: 16000
+metrics:
+  - _target_: src.metrics.PESQ
+    name: "PESQ"
+    fs: ${sample_rate}
+    mode: "wb"
+  - _target_: src.metrics.SDRi
+    name: "SDRi"
+  - _target_: src.metrics.SI_SNRi
+    name: "SI_SNRi"
+  - _target_: src.metrics.STOI
+    name: "STOI"
+    fs: ${sample_rate}
