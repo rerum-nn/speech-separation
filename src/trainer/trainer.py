@@ -41,7 +41,7 @@ class Trainer(BaseTrainer):
             video_features1 = self.video_encoder(batch["source1_mouth"].unsqueeze(1))
             video_features2 = self.video_encoder(batch["source2_mouth"].unsqueeze(1))
             batch["video_features"] = torch.cat(
-                [video_features1, video_features2], dim=1
+                [video_features1.unsqueeze(1), video_features2.unsqueeze(1)], dim=1
             )
 
         with torch.cuda.amp.autocast(
@@ -101,6 +101,8 @@ class Trainer(BaseTrainer):
             batch["predicted"] = torch.cat(
                 [batch["predicted_source1"], batch["predicted_source2"]], dim=1
             )
+        elif "predicted" in batch:
+            pass
         else:
             raise ValueError(f"Invalid model output. Batch keys: {batch.keys()}")
 
@@ -171,7 +173,7 @@ class Trainer(BaseTrainer):
 
     def log_predictions(self, metric_funcs, examples_to_log=2, **batch):
         rows = {}
-        for i in range(examples_to_log):
+        for i in range(min(examples_to_log, len(batch["mix_path"]))):
             name = Path(batch["mix_path"][i]).name.split(".")[0]
 
             self.log_spectrogram(batch["input_mix_spectrogram"][i], f"{name}_input_mix")

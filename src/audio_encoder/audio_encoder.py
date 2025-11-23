@@ -29,7 +29,7 @@ class AudioEncoder:
         self.input_transform = input_transform
 
     def encode_input(self, audio: torch.Tensor) -> torch.Tensor:
-        audio = self.input_transform(audio)  # TODO: input_transform could be None
+        audio = self.input_transform(audio) if self.input_transform is not None else audio
         return audio
 
     def encode(
@@ -53,7 +53,7 @@ class AudioEncoder:
         self, audio: torch.Tensor, device: str = "cpu"
     ) -> (
         torch.Tensor
-    ):  # TODO: Why the method needed? There are encode that does the same
+    ):
         window = self.window_fn(self.win_length).to(device)
         return torchaudio.functional.spectrogram(
             audio,
@@ -88,7 +88,7 @@ class AudioEncoder:
 
     def get_input_shape(self, signal_length: int, *args, **kwargs) -> tuple[int, int]:
         sample = torch.randn(1, signal_length)
-        res = self.input_transform(sample)
+        res = self.input_transform(sample) if self.input_transform is not None else sample
         return res.shape[1], res.shape[2]
 
     def get_output_shape(self, signal_length: int) -> tuple[int, int]:

@@ -62,7 +62,13 @@ def get_dataloaders(config, audio_encoder, device):
     # transforms or augmentations init
     batch_transforms = instantiate(config.transforms.batch_transforms)
     move_batch_transforms_to_device(batch_transforms, device)
-
+    
+    target_sr = 16000
+    if "trainer" in config.keys():
+        target_sr = config.trainer.get("sample_rate", target_sr)
+    elif "inferencer" in config.keys():
+        target_sr = config.inferencer.get("sample_rate", target_sr)
+    
     # dataloaders init
     dataloaders = {}
     for dataset_partition in config.datasets.keys():
@@ -70,7 +76,7 @@ def get_dataloaders(config, audio_encoder, device):
         dataset = instantiate(
             config.datasets[dataset_partition],
             audio_encoder=audio_encoder,
-            target_sr=config.trainer.sample_rate,
+            target_sr=target_sr,
         )  # instance transforms are defined inside
 
         assert config.dataloader.batch_size <= len(dataset), (

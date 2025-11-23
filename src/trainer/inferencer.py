@@ -1,5 +1,8 @@
 import torch
+import torchaudio
 from tqdm.auto import tqdm
+from pathlib import Path
+from src.utils.audio_processing import match_rms
 
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
@@ -24,8 +27,10 @@ class Inferencer(BaseTrainer):
         metrics=None,
         batch_transforms=None,
         audio_encoder=None,
+        video_encoder=None,
         sample_rate=16000,
         skip_model_load=False,
+        rescale_audio=False,
     ):
         """
         Initialize the Inferencer.
@@ -36,7 +41,8 @@ class Inferencer(BaseTrainer):
             device (str): device for tensors and model.
             dataloaders (dict[DataLoader]): dataloaders for different
                 sets of data.
-            text_encoder (CTCTextEncoder): text encoder.
+            audio_encoder (AudioEncoder): audio encoder for the model.
+            video_encoder (VideoEncoder): video encoder for the model.
             save_path (str): path to save model predictions and other
                 information.
             metrics (dict): dict with the definition of metrics for
@@ -62,6 +68,13 @@ class Inferencer(BaseTrainer):
         self.model = model
         self.batch_transforms = batch_transforms
         self.audio_encoder = audio_encoder
+        self.video_encoder = video_encoder
+        self.sample_rate = sample_rate
+
+        self.modality = self.cfg_trainer.get("modality", "audio")
+        if self.modality not in ["audio", "audiovideo"]:
+            raise ValueError(f"Invalid modality: {self.modality}")
+
         # define dataloaders
         self.evaluation_dataloaders = {k: v for k, v in dataloaders.items()}
 
@@ -81,7 +94,9 @@ class Inferencer(BaseTrainer):
 
         if not skip_model_load:
             # init model
-            self._from_pretrained(config.inferencer.get("from_pretrained"))
+            self._from_pretrained(self.cfg_trainer.get("from_pretrained"))
+        
+        self.rescale_audio = rescale_audio
 
     def run_inference(self):
         """
@@ -96,6 +111,16 @@ class Inferencer(BaseTrainer):
             logs = self._inference_part(part, dataloader)
             part_logs[part] = logs
         return part_logs
+
+    def _get_predicted(self, batch):
+        if 'mask1' in batch and 'mask2' in batch:
+            batch['masked_spectrogram1'] = batch['mix_spectrogram'] * batch['mask1'].unsqueeze(1)
+            batch['masked_spectrogram2'] = batch['mix_spectrogram'] * batch['mask2'].unsqueeze(1)
+            batch['predicted_source1'] = self.audio_encoder.decode(batch['masked_spectrogram1'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
+            batch['predicted_source2'] = self.audio_encoder.decode(batch['masked_spectrogram2'], batch['mix_phase'], batch['mix_waveform_len'], device=self.device)
+            batch['predicted'] = torch.cat([batch['predicted_source1'], batch['predicted_source2']], dim=1)
+            
+        return batch
 
     def process_batch(self, batch_idx, batch, metrics, part):
         """
@@ -119,42 +144,57 @@ class Inferencer(BaseTrainer):
                 the dataloader (possibly transformed via batch transform)
                 and model outputs.
         """
-        # TODO change inference logic so it suits ASR assignment
-        # and task pipeline
 
         batch = self.move_batch_to_device(batch)
         batch = self.transform_batch(batch)  # transform batch on device -- faster
 
+        if self.modality == "audiovideo":
+            video_features1 = self.video_encoder(batch['source1_mouth'].unsqueeze(1))
+            video_features2 = self.video_encoder(batch['source2_mouth'].unsqueeze(1))
+            batch['video_features'] = torch.cat([video_features1.unsqueeze(1), video_features2.unsqueeze(1)], dim=1)
+        
         outputs = self.model(**batch)
         batch.update(outputs)
 
-        if metrics is not None:
+        batch = self._get_predicted(batch)
+
+        if metrics is not None and "target" in batch:
             for met in self.metrics["inference"]:
                 metrics.update(met.name, met(**batch))
 
         # Some saving logic. This is an example
         # Use if you need to save predictions on disk
 
-        batch_size = batch["logits"].shape[0]
-        current_id = batch_idx * batch_size
-
+        batch_size = batch["predicted"].shape[0]
         for i in range(batch_size):
             # clone because of
             # https://github.com/pytorch/pytorch/issues/1995
-            logits = batch["logits"][i].clone()
-            label = batch["labels"][i].clone()
-            pred_label = logits.argmax(dim=-1)
+            predicted = batch["predicted"][i].clone()
 
-            output_id = current_id + i
+            if self.rescale_audio:
+                source_1 = match_rms(batch["mix"][i], predicted[0]).unsqueeze(0).cpu()
+                source_2 = match_rms(batch["mix"][i], predicted[1]).unsqueeze(0).cpu() 
+            else:
+                source_1 = predicted[0].unsqueeze(0).cpu()
+                source_2 = predicted[1].unsqueeze(0).cpu() 
+            
+            mix_id = Path(batch["mix_path"][i]).stem
 
-            output = {
-                "pred_label": pred_label,
-                "label": label,
-            }
+            mix_dir = self.save_path / part / "mix"
+            s1_dir = self.save_path / part / "s1"
+            s2_dir = self.save_path / part / "s2"
 
-            if self.save_path is not None:
-                # you can use safetensors or other lib here
-                torch.save(output, self.save_path / part / f"output_{output_id}.pth")
+            mix_dir.mkdir(parents=True, exist_ok=True)
+            s1_dir.mkdir(parents=True, exist_ok=True)
+            s2_dir.mkdir(parents=True, exist_ok=True)
+
+            mix_path = mix_dir / f"{mix_id}.wav"
+            s1_path = s1_dir / f"{mix_id}.wav"
+            s2_path = s2_dir / f"{mix_id}.wav"
+
+            torchaudio.save(str(mix_path), batch["mix"][i].cpu(), self.sample_rate)
+            torchaudio.save(str(s1_path), source_1, self.sample_rate)
+            torchaudio.save(str(s2_path), source_2, self.sample_rate)
 
         return batch
 
@@ -190,5 +230,8 @@ class Inferencer(BaseTrainer):
                     part=part,
                     metrics=self.evaluation_metrics,
                 )
+
+        if "target" not in batch:
+            print("Not target, skipping metrics calculation")
 
         return self.evaluation_metrics.result()

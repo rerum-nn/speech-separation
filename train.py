@@ -56,7 +56,7 @@ def main(config):
     signal_length = dataloaders["train"].dataset[0]["mix"].shape[1]
     in_freq, in_frames = audio_encoder.get_input_shape(signal_length)
     out_freq, out_frames = audio_encoder.get_output_shape(signal_length)
-
+    
     # build model architecture, then print to console
     model = instantiate(
         config.model,
@@ -67,14 +67,18 @@ def main(config):
     ).to(device)
     logger.info(model)
 
+    use_pit = config.trainer.get("use_pit", True)
+
     # get function handles of loss and metrics
-    loss_function = instantiate(config.loss_function).to(device)
+    loss_function = instantiate(config.loss_function, use_pit=use_pit).to(device)
 
     metrics = {"train": [], "inference": []}
     for metric_type in ["train", "inference"]:
         for metric_config in config.metrics.get(metric_type, []):
             # use text_encoder in metrics
-            metrics[metric_type].append(instantiate(metric_config, device=device))
+            metrics[metric_type].append(
+                instantiate(metric_config, device=device, use_pit=use_pit)
+            )
 
     # build optimizer, learning rate scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
@@ -100,7 +104,7 @@ def main(config):
         epoch_len=epoch_len,
         logger=logger,
         writer=writer,
-        batch_transforms=batch_transforms,  # TODO: add normalization to batch transforms from collate.py 58, 62 взять пример из example.yaml
+        batch_transforms=batch_transforms,  
         skip_oom=config.trainer.get("skip_oom", True),
     )
 

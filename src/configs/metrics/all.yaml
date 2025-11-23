@@ -2,7 +2,7 @@ train: []
 inference:
   - _target_: src.metrics.PESQ
     name: "PESQ"
-    fs: 16000
+    fs: ${trainer.sample_rate}
     mode: "wb"
   - _target_: src.metrics.SDRi
     name: "SDRi"
@@ -10,4 +10,4 @@ inference:
     name: "SI_SNRi"
   - _target_: src.metrics.STOI
     name: "STOI"
-    fs: 16000
+    fs: ${trainer.sample_rate}

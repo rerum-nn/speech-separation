@@ -415,6 +415,8 @@ class BaseTrainer:
                 the dataloader with some of the tensors on the device.
         """
         for tensor_for_device in self.cfg_trainer.device_tensors:
+            if tensor_for_device == 'target' and 'target' not in batch:
+                continue
             batch[tensor_for_device] = batch[tensor_for_device].to(self.device)
         return batch
 
