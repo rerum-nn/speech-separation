@@ -1,0 +1,5 @@
+val:
+  _target_: src.datasets.AVSSDataset
+  audio_dir: ./data/datasets/dla_dataset/audio/val
+  mouths_dir: ./data/datasets/dla_dataset/mouths
+  instance_transforms: ${transforms.instance_transforms.inference}

@@ -1,13 +1,27 @@
 defaults:
-  - model: baseline
-  - metrics: example
-  - datasets: example_eval # we do not want to run inference on training data
-  - dataloader: example
-  - transforms: example
+  - model: rtfs_u_net_tiny
+  - metrics: inference
+  - datasets: custom_dir_dataset
+  - dataloader: inference
+  - transforms: example_only_instance
   - _self_
+audio_encoder:
+  _target_: src.audio_encoder.AudioEncoder
+  n_fft: 256
+  input_transform:
+    _target_: torchaudio.transforms.Spectrogram
+    n_fft: 256
+    win_length: 256
+    hop_length: 128
+video_encoder:
+  model:
+    _target_: src.video_encoder.Lipreading
+  weights: "data/video_encoder/lrw_resnet18_dctcn_video.pth"
 inferencer:
-  device_tensors: ["data_object", "labels"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["input_mix_spectrogram", "mix_spectrogram", "mix_phase", 'target', 'mix', "source1_mouth", "source2_mouth"]
   device: auto # device name or "auto"
-  save_path: "example" # any name here, can be a dataset name
+  save_path: null  # any name here, can be a dataset name
   seed: 1
-  from_pretrained: "saved/model_best.pth" # path to the pretrained model
+  sample_rate: 16000
+  modality: audiovideo
+  from_pretrained: null # path to the pretrained model
