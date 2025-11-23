@@ -1,4 +1,4 @@
-# Automatic Speech Recognition (ASR) with PyTorch
+# Audio-Visual Speech Separation with PyTorch
 
 <p align="center">
   <a href="#about">About</a> •
@@ -10,56 +10,42 @@
 
 ## About
 
-This repository contains a template for solving ASR task with PyTorch. This template branch is a part of the [HSE DLA course](https://github.com/markovka17/dla) ASR homework. Some parts of the code are missing (or do not follow the most optimal design choices...) and students are required to fill these parts themselves (as well as writing their own models, etc.).
+PyTorch implementation of DPRNN and RTFS-Net models for Audio-Visual Speech Separation task. Also repository consist our custom realisation of RTFS-Net -- RTFS-U-Net.
 
-See the task assignment [here](https://github.com/markovka17/dla/tree/2024/hw1_asr).
+See the task assignment [here](https://github.com/markovka17/dla/tree/2025/project_avss).
 
 ## Installation
 
-Follow these steps to install the project:
-
-0. (Optional) Create and activate new environment using [`conda`](https://conda.io/projects/conda/en/latest/user-guide/getting-started.html) or `venv` ([`+pyenv`](https://github.com/pyenv/pyenv)).
-
-   a. `conda` version:
-
+1. Clone the repository:
    ```bash
-   # create env
-   conda create -n project_env python=PYTHON_VERSION
-
-   # activate env
-   conda activate project_env
+   git clone https://github.com/rerum-nn/speech-separation.git
+   cd asr-rnn-t
    ```
 
-   b. `venv` (`+pyenv`) version:
-
+2. Create conda environment (strongly recommended):
    ```bash
-   # create env
-   ~/.pyenv/versions/PYTHON_VERSION/bin/python3 -m venv project_env
-
-   # alternatively, using default python version
-   python3 -m venv project_env
-
-   # activate env
-   source project_env/bin/activate
+   conda create -n dla python=3.10
+   conda activate dla
    ```
 
-1. Install all required packages
-
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Install `pre-commit`:
+4. Install `pre-commit`:
    ```bash
    pre-commit install
    ```
 
 ## How To Use
 
+### Train model
+
 To train a model, run the following command:
 
 ```bash
-python3 train.py -cn=CONFIG_NAME HYDRA_CONFIG_ARGUMENTS
+$ python3 train.py -cn=CONFIG_NAME HYDRA_CONFIG_ARGUMENTS
 ```
 
 Where `CONFIG_NAME` is a config from `src/configs` and `HYDRA_CONFIG_ARGUMENTS` are optional arguments.
@@ -67,7 +53,89 @@ Where `CONFIG_NAME` is a config from `src/configs` and `HYDRA_CONFIG_ARGUMENTS` 
 To run inference (evaluate the model or save predictions):
 
 ```bash
-python3 inference.py HYDRA_CONFIG_ARGUMENTS
+$ python3 inference.py datasets=inference dataloader=main inferencer.save_path=/save/path inferencer.from_pretrained=/model/path model=rtfs_u_net_tiny
+```
+
+The results will be saved in next path:
+` ROOT_PATH/data/saved/{inferencer.save_path}`
+
+We use next configs with implemented models:
+- dprnn.yaml
+- rtfs_net.yaml
+
+All the models configs can be found in `src/configs/model`.
+
+### Calc metric
+
+To calc metric
+
+```bash
+$ python3 calc_metrics.py paths.mix=/path/to/mix paths.ground_truth=/path/to/ground_truth paths.predictions=/path/to/predictions
+```
+
+## How to load checkpoint
+
+To load the final checkpoint, run the following command:
+
+```bash
+$ ./download_yadisk.sh https://disk.360.yandex.ru/d/LuYNtQZKVJPvGw content/avss/model.pth
+```
+
+Load checkpoint without validation in train set:
+ ```bash
+$ ./download_yadisk.sh https://disk.360.yandex.ru/d/7Z92QjhOtcuYRw content/avss/model.pth
+```
+
+Also download video_encoder checkpoint:
+```bash
+$ gdown 179NgMsHo9TeZCLLtNWFVgRehDvzteMZE -O data/video_encoder/lrw_resnet18_dctcn_video.pth
+```
+
+## How to load your dataset
+
+Your dataset should be placed on yandex disk and has the next structure:
+```
+NameOfTheDirectoryWithUtterances
+├── audio
+│   ├── mix
+│   │   ├── FirstSpeakerID1_SecondSpeakerID1.wav # also may be flac or mp3
+│   │   ├── FirstSpeakerID2_SecondSpeakerID2.wav
+│   │   .
+│   │   .
+│   │   .
+│   │   └── FirstSpeakerIDn_SecondSpeakerIDn.wav
+│   ├── s1 # ground truth for the speaker s1, may not be given
+│   │   ├── FirstSpeakerID1_SecondSpeakerID1.wav # also may be flac or mp3
+│   │   ├── FirstSpeakerID2_SecondSpeakerID2.wav
+│   │   .
+│   │   .
+│   │   .
+│   │   └── FirstSpeakerIDn_SecondSpeakerIDn.wav
+│   └── s2 # ground truth for the speaker s2, may not be given
+│       ├── FirstSpeakerID1_SecondSpeakerID1.wav # also may be flac or mp3
+│       ├── FirstSpeakerID2_SecondSpeakerID2.wav
+│       .
+│       .
+│       .
+│       └── FirstSpeakerIDn_SecondSpeakerIDn.wav
+└── mouths # contains video information for all speakers
+    ├── FirstOrSecondSpeakerID1.npz # npz mouth-crop
+    ├── FirstOrSecondSpeakerID2.npz
+    .
+    .
+    .
+    └── FirstOrSecondSpeakerIDn.npz. 
+```
+
+
+```bash
+$ ./download_dataset.sh dataset_link_on_yadisk content/datasets/custom_dataset
+```
+
+## How to reproduce the best result
+
+```bash
+$ python3 train.py -cn=rtfs_net trainer.override=True writer.run_name=rtfs-u-net-tiny-two-targets-long dataloader.batch_size=16 trainer.epoch_len=1250 trainer.n_epochs=150 datasets=main metrics=train model=rtfs_net_tiny model.compression_blocks=2 +trainer.use_amp_bf16=True +trainer.use_custom_init=True lr_scheduler.pct_start=0.01 trainer.log_step=250
 ```
 
 ## Credits
