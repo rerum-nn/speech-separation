@@ -116,7 +116,7 @@ class BaseDataset(Dataset):
 
         original_mix_spectrogram = self.audio_encoder.get_spectrogram(
             instance_data["original_mix"]
-        )  # TODO: maybe just "original_mix_spectrogram = mix_spectrogram.clone()"?
+        )
         instance_data["original_mix_spectrogram"] = original_mix_spectrogram
 
         input_mix_spectrogram = self.audio_encoder.encode_input(instance_data["mix"])

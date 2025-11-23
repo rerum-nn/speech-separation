@@ -131,4 +131,4 @@ class CAF(nn.Module):
         attention_fusion = self.attention_fusion(audio_embedding, video_embedding)
         gated_fusion = self.gated_fusion(audio_embedding, video_embedding)
 
-        return attention_fusion + gated_fusion  # TODO maybe try smth like concat, *, se
+        return attention_fusion + gated_fusion

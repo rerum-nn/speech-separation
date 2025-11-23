@@ -1,10 +1,21 @@
 import torch
 import torch.nn as nn
+
 from src.model.rtfs_net_layers.global_layer_norm import GlobalLayerNorm2D
 
 
 class AudioDecoder(nn.Module):
-    def __init__(self, in_channels, kernel_size=3, bias: bool = True, n_fft=256, win_length=256, hop_length=128, *args, **kwargs):
+    def __init__(
+        self,
+        in_channels,
+        kernel_size=3,
+        bias: bool = True,
+        n_fft=256,
+        win_length=256,
+        hop_length=128,
+        *args,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
         self.n_fft = n_fft
@@ -27,12 +38,16 @@ class AudioDecoder(nn.Module):
             Tensor: (B, 1, T_a)
         """
 
-        # TODO maybe add decoding for all targets
         x = self.conv(audio_embedding)
-        
+
         magnit, phase = torch.chunk(x, 2, dim=1)
 
         spectrogram = torch.complex(magnit, phase).squeeze(1).transpose(-1, -2)
-        audio = torch.istft(spectrogram, n_fft=self.n_fft, hop_length=self.hop_length, win_length=self.win_length).unsqueeze(1)
+        audio = torch.istft(
+            spectrogram,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+        ).unsqueeze(1)
 
         return audio
