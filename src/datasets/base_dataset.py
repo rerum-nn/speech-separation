@@ -132,9 +132,7 @@ class BaseDataset(Dataset):
 
     def load_audio(self, path):
         audio_tensor, sr = torchaudio.load(path)
-        audio_tensor = audio_tensor[
-            0:1, :
-        ]  # TODO: а это зачем? он одноканальный, а если стерео не лучше ли среднее?
+        audio_tensor = audio_tensor[0:1, :]
         if sr != self.target_sr:
             audio_tensor = torchaudio.functional.resample(
                 audio_tensor, sr, self.target_sr

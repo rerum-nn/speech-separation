@@ -3,7 +3,7 @@ defaults:
   - metrics: inference
   - datasets: custom_dir_dataset
   - dataloader: inference
-  - transforms: example_only_instance
+  - transforms: main
   - _self_
 audio_encoder:
   _target_: src.audio_encoder.AudioEncoder
