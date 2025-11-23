@@ -1,0 +1,13 @@
+train: []
+inference:
+  - _target_: src.metrics.PESQ
+    name: "PESQ"
+    fs: ${trainer.sample_rate}
+    mode: "wb"
+  - _target_: src.metrics.SDRi
+    name: "SDRi"
+  - _target_: src.metrics.SI_SNRi
+    name: "SI_SNRi"
+  - _target_: src.metrics.STOI
+    name: "STOI"
+    fs: ${trainer.sample_rate}
